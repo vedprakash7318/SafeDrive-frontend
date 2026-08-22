@@ -705,7 +705,9 @@ export default function CheckoutModal({ product, onClose, onPurchaseSuccess }) {
             <div>
               <h3 className="text-2xl font-black text-slate-900">Payment Successful!</h3>
               <p className="text-xs text-slate-500 mt-1">
-                Your QR safety kit has been allocated and linked to your account.
+                {orderResult.isDigital
+                  ? 'Your digital QR safety pass has been generated.'
+                  : 'Your physical QR kit order has been placed and will be delivered.'}
               </p>
             </div>
 
@@ -716,18 +718,28 @@ export default function CheckoutModal({ product, onClose, onPurchaseSuccess }) {
               </div>
               <div className="flex justify-between text-slate-600">
                 <span>Amount Paid:</span>
-                <span className="font-bold text-[#1D56A5]">₹{product.price}</span>
+                <span className="font-bold text-[#1D56A5]">₹{(product.price || 299) * quantity}</span>
               </div>
               <div className="flex justify-between text-slate-600">
-                <span>Allocated Stickers:</span>
-                <span className="font-mono font-bold text-slate-900">
-                  {orderResult.allocatedQRs?.map((q) => q.copyCode).join(', ')}
-                </span>
+                <span>Order Reference:</span>
+                <span className="font-mono font-bold text-slate-900">{orderResult.orderNumber}</span>
               </div>
+              {orderResult.isDigital && orderResult.allocatedQRs?.length > 0 && (
+                <div className="flex justify-between text-slate-600">
+                  <span>Generated Passes:</span>
+                  <span className="font-mono font-bold text-slate-900">
+                    {orderResult.allocatedQRs.map((q) => q.copyCode).join(', ')}
+                  </span>
+                </div>
+              )}
             </div>
 
-            <div className="p-3 bg-[#E9DFEE]/60 border border-[#1D56A5]/25 rounded-2xl text-xs text-[#1D56A5] font-semibold">
-              ✉️ Confirmation invoice has been dispatched to <strong>{form.email}</strong>.
+            <div className="p-3 bg-blue-50 border border-[#1D56A5]/25 rounded-2xl text-xs text-[#1D56A5] font-semibold text-left">
+              {orderResult.isDigital ? (
+                <span>💻 <strong>Digital Kit:</strong> Access your QR code in your Order History to download and print. Scan the QR to register your vehicle.</span>
+              ) : (
+                <span>📦 <strong>Physical Kit:</strong> Stickers will be delivered to your address. Once delivered, scan any sticker to register and activate.</span>
+              )}
             </div>
 
             <button
@@ -737,7 +749,7 @@ export default function CheckoutModal({ product, onClose, onPurchaseSuccess }) {
               }}
               className="w-full bg-[#1D56A5] hover:bg-[#164382] text-white font-bold py-3.5 rounded-2xl shadow-lg shadow-[#1D56A5]/25 transition flex items-center justify-center space-x-2 text-xs"
             >
-              <span>Go to My Dashboard & Activate QR</span>
+              <span>Go to My Dashboard</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>
