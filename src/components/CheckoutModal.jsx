@@ -168,17 +168,34 @@ export default function CheckoutModal({ product, onClose, onPurchaseSuccess }) {
 
       // 2. Open Razorpay Checkout Modal
       if (window.Razorpay && (isLive || !isSimulated) && keyId && keyId !== 'rzp_test_simulation') {
+        // Clean Indian 10-digit phone for Razorpay (must be strictly 10 digits without +91 or 0 prefix)
+        let cleanIndianPhone = (form.phone || '').replace(/[^0-9]/g, '');
+        if (cleanIndianPhone.startsWith('91') && cleanIndianPhone.length > 10) {
+          cleanIndianPhone = cleanIndianPhone.slice(2);
+        } else if (cleanIndianPhone.startsWith('0') && cleanIndianPhone.length > 10) {
+          cleanIndianPhone = cleanIndianPhone.slice(1);
+        }
+        cleanIndianPhone = cleanIndianPhone.slice(-10);
+        if (cleanIndianPhone.length !== 10) {
+          cleanIndianPhone = '9876543210';
+        }
+
         const options = {
           key: keyId,
           amount: amount, // Backend sends exact amount in paise
           currency: 'INR',
           name: 'Safe Drive',
-          description: `Purchase ${product.name}`,
+          description: `Purchase ${product.title || product.name || 'Safety Kit'}`,
           order_id: orderId,
           prefill: {
-            name: form.name,
-            email: form.email,
-            contact: form.phone
+            name: form.name || 'Customer',
+            email: form.email || 'customer@safedrive.in',
+            contact: cleanIndianPhone
+          },
+          notes: {
+            productId: product._id,
+            productTitle: product.title || product.name,
+            customerPhone: cleanIndianPhone
           },
           theme: {
             color: '#1D56A5'
@@ -199,7 +216,7 @@ export default function CheckoutModal({ product, onClose, onPurchaseSuccess }) {
 
         const rzp = new window.Razorpay(options);
         rzp.on('payment.failed', function (response) {
-          setGeneralError(`Payment Failed: ${response.error?.description || 'Payment rejected'}`);
+          setGeneralError(`Payment Failed: ${response.error?.description || 'Payment rejected by gateway'}`);
           setProcessingPayment(false);
         });
         rzp.open();
