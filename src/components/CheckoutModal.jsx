@@ -22,6 +22,7 @@ import { API_BASE } from '../config/api';
 export default function CheckoutModal({ product, onClose, onPurchaseSuccess }) {
   // Step: 1 = Details, 2 = Email OTP, 3 = Payment Processing, 4 = Success
   const [step, setStep] = useState(1);
+  const [quantity, setQuantity] = useState(1);
 
   // Form State
   const [form, setForm] = useState({
@@ -155,6 +156,7 @@ export default function CheckoutModal({ product, onClose, onPurchaseSuccess }) {
       // 1. Call Backend to create order
       const orderRes = await axios.post(`${API_BASE}/purchase/create-order`, {
         productId: product._id,
+        quantity,
         email: form.email,
         phone: form.phone,
         name: form.name
@@ -185,7 +187,7 @@ export default function CheckoutModal({ product, onClose, onPurchaseSuccess }) {
           amount: amount, // Backend sends exact amount in paise
           currency: 'INR',
           name: 'Safe Drive',
-          description: `Purchase ${product.title || product.name || 'Safety Kit'}`,
+          description: `Purchase ${quantity}x ${product.title || product.name || 'Safety Kit'}`,
           order_id: orderId,
           prefill: {
             name: form.name || 'Customer',
@@ -195,6 +197,7 @@ export default function CheckoutModal({ product, onClose, onPurchaseSuccess }) {
           notes: {
             productId: product._id,
             productTitle: product.title || product.name,
+            quantity: String(quantity),
             customerPhone: cleanIndianPhone
           },
           theme: {
@@ -239,12 +242,15 @@ export default function CheckoutModal({ product, onClose, onPurchaseSuccess }) {
     try {
       const res = await axios.post(`${API_BASE}/purchase/complete`, {
         productId: product._id,
+        quantity,
         name: form.name,
         email: form.email,
         phone: form.phone,
         address: form.address,
         city: form.city,
         state: form.state,
+        pincode: form.pincode,
+        landmark: form.landmark,
         ...paymentDetails
       });
 
@@ -348,14 +354,46 @@ export default function CheckoutModal({ product, onClose, onPurchaseSuccess }) {
                   </div>
                 </div>
 
+                {/* QUANTITY SELECTOR */}
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 flex justify-between items-center">
+                  <div>
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Order Quantity:</div>
+                    <div className="text-xs font-bold text-slate-700">How many kit sets?</div>
+                  </div>
+                  <div className="flex items-center space-x-2 bg-white border border-slate-300 rounded-xl p-1 shadow-sm">
+                    <button
+                      type="button"
+                      onClick={() => setQuantity((prev) => Math.max(1, prev - 1))}
+                      className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold flex items-center justify-center text-sm transition disabled:opacity-40"
+                      disabled={quantity <= 1}
+                    >
+                      -
+                    </button>
+                    <span className="w-8 text-center font-mono font-black text-slate-900 text-sm">{quantity}</span>
+                    <button
+                      type="button"
+                      onClick={() => setQuantity((prev) => Math.min(20, prev + 1))}
+                      className="w-7 h-7 rounded-lg bg-[#1D56A5] hover:bg-[#164382] text-white font-bold flex items-center justify-center text-sm transition"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+
+                {/* TOTAL PAYABLE */}
                 <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 flex justify-between items-center">
                   <div>
                     <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total Payable:</div>
-                    <div className="text-2xl font-black text-[#1D56A5]">₹{product.price}</div>
+                    <div className="text-2xl font-black text-[#1D56A5]">
+                      ₹{(product.price || 299) * quantity}
+                      {quantity > 1 && (
+                        <span className="text-xs text-slate-400 font-medium ml-1.5">(₹{product.price} × {quantity})</span>
+                      )}
+                    </div>
                   </div>
                   <div className="text-[10px] text-slate-500 text-right font-medium">
-                    Includes {product.copiesPerSet} Stickers <br />
-                    + 1-Year Protection Quota
+                    Includes {(product.copiesPerSet || 2) * quantity} Stickers <br />
+                    + {quantity} Year/Kit Quota
                   </div>
                 </div>
 
@@ -516,6 +554,49 @@ export default function CheckoutModal({ product, onClose, onPurchaseSuccess }) {
                       onChange={(e) => setForm({ ...form, state: e.target.value })}
                       className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 text-sm focus:bg-white focus:outline-none focus:border-[#1D56A5] transition"
                     />
+                  </div>
+                </div>
+
+                {/* QUANTITY SELECTOR */}
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 flex justify-between items-center">
+                  <div>
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Order Quantity:</div>
+                    <div className="text-xs font-bold text-slate-700">How many kit sets?</div>
+                  </div>
+                  <div className="flex items-center space-x-2 bg-white border border-slate-300 rounded-xl p-1 shadow-sm">
+                    <button
+                      type="button"
+                      onClick={() => setQuantity((prev) => Math.max(1, prev - 1))}
+                      className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold flex items-center justify-center text-sm transition disabled:opacity-40"
+                      disabled={quantity <= 1}
+                    >
+                      -
+                    </button>
+                    <span className="w-8 text-center font-mono font-black text-slate-900 text-sm">{quantity}</span>
+                    <button
+                      type="button"
+                      onClick={() => setQuantity((prev) => Math.min(20, prev + 1))}
+                      className="w-7 h-7 rounded-lg bg-[#1D56A5] hover:bg-[#164382] text-white font-bold flex items-center justify-center text-sm transition"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+
+                {/* TOTAL PAYABLE */}
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 flex justify-between items-center">
+                  <div>
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total Payable:</div>
+                    <div className="text-2xl font-black text-[#1D56A5]">
+                      ₹{(product.price || 299) * quantity}
+                      {quantity > 1 && (
+                        <span className="text-xs text-slate-400 font-medium ml-1.5">(₹{product.price} × {quantity})</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="text-[10px] text-slate-500 text-right font-medium">
+                    Includes {(product.copiesPerSet || 2) * quantity} Stickers <br />
+                    + {quantity} Year/Kit Quota
                   </div>
                 </div>
 
