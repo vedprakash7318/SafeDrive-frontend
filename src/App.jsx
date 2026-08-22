@@ -28,10 +28,23 @@ import {
   MoreHorizontal,
   Send,
   Navigation,
-  HelpCircle
+  HelpCircle,
+  Sparkles,
+  QrCode,
+  ShoppingBag,
+  Package,
+  Printer,
+  Download,
+  Eye,
+  FileText,
+  CheckCircle2,
+  ExternalLink
 } from 'lucide-react';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
+import Store from './pages/Store';
+import Login from './pages/Login';
+import SafeDriveQRCode from './components/SafeDriveQRCode';
+import { API_BASE } from './config/api';
 
 // Icon Map Helper for dynamic reasons
 const getReasonIcon = (iconKey) => {
@@ -121,6 +134,137 @@ function PublicQRScanView() {
   });
   const [registering, setRegistering] = useState(false);
   const [regError, setRegError] = useState('');
+
+  // Mobile OTP States for First-Time Activation
+  const [activationPhone, setActivationPhone] = useState('');
+  const [activationOtp, setActivationOtp] = useState('123456');
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpLoading, setOtpLoading] = useState(false);
+  const [isPhoneVerified, setIsPhoneVerified] = useState(false);
+  const [otpMsg, setOtpMsg] = useState('');
+  const [otpError, setOtpError] = useState('');
+
+  // Send Activation OTP
+  const handleSendActivationOtp = async (e) => {
+    if (e) e.preventDefault();
+    const cleanPhone = (activationPhone || '').trim().replace(/\D/g, '').slice(-10);
+    if (!cleanPhone || cleanPhone.length < 10) {
+      setOtpError('Please enter a valid 10-digit mobile number');
+      return;
+    }
+    setOtpLoading(true);
+    setOtpError('');
+    setOtpMsg('');
+    try {
+      const res = await axios.post(`${API_BASE}/public/send-activation-otp`, {
+        phone: cleanPhone
+      });
+      if (res.data.success) {
+        setOtpSent(true);
+        setActivationOtp(res.data.otp || '123456');
+        setOtpMsg(`✓ OTP sent to +91 ${cleanPhone}`);
+        if (res.data.user) {
+          setRegForm((prev) => ({
+            ...prev,
+            name: res.data.user.name || prev.name,
+            phone: cleanPhone,
+            address: res.data.user.address || prev.address,
+            whatsappNumber: res.data.user.whatsappNumber || cleanPhone
+          }));
+        } else {
+          setRegForm((prev) => ({
+            ...prev,
+            phone: cleanPhone,
+            whatsappNumber: prev.whatsappNumber || cleanPhone
+          }));
+        }
+      }
+    } catch (err) {
+      setOtpError(err.response?.data?.message || 'Failed to send OTP code.');
+    } finally {
+      setOtpLoading(false);
+    }
+  };
+
+  // Verify Activation OTP
+  const handleVerifyActivationOtp = async (e) => {
+    if (e) e.preventDefault();
+    const cleanPhone = (activationPhone || '').trim().replace(/\D/g, '').slice(-10);
+    if (!activationOtp || activationOtp.trim().length < 6) {
+      setOtpError('Please enter 6-digit OTP code');
+      return;
+    }
+    setOtpLoading(true);
+    setOtpError('');
+    try {
+      const res = await axios.post(`${API_BASE}/public/verify-activation-otp`, {
+        phone: cleanPhone,
+        otp: activationOtp.trim()
+      });
+      if (res.data.success && res.data.verified) {
+        setIsPhoneVerified(true);
+        setOtpMsg(`✓ +91 ${cleanPhone} verified successfully!`);
+        if (res.data.user) {
+          setRegForm((prev) => ({
+            ...prev,
+            name: res.data.user.name || prev.name,
+            phone: cleanPhone,
+            address: res.data.user.address || prev.address,
+            whatsappNumber: res.data.user.whatsappNumber || cleanPhone
+          }));
+        } else {
+          setRegForm((prev) => ({
+            ...prev,
+            phone: cleanPhone,
+            whatsappNumber: prev.whatsappNumber || cleanPhone
+          }));
+        }
+      }
+    } catch (err) {
+      setOtpError(err.response?.data?.message || 'Invalid OTP code. Please enter 123456');
+    } finally {
+      setOtpLoading(false);
+    }
+  };
+
+  // Physical QR Claim States
+  const [claimEmailOrPhone, setClaimEmailOrPhone] = useState('');
+  const [claiming, setClaiming] = useState(false);
+  const [claimError, setClaimError] = useState('');
+
+  // Handle Physical QR Claim & Verification
+  const handleClaimSubmit = async (e) => {
+    e.preventDefault();
+    if (!claimEmailOrPhone.trim()) return;
+
+    setClaiming(true);
+    setClaimError('');
+
+    try {
+      const res = await axios.post(`${API_BASE}/public/qr/${token}/claim`, {
+        emailOrPhone: claimEmailOrPhone.trim()
+      });
+      if (res.data.success) {
+        setQrData((prev) => ({
+          ...prev,
+          status: 'UNREGISTERED',
+          user: res.data.user
+        }));
+        if (res.data.user) {
+          setRegForm((prev) => ({
+            ...prev,
+            name: res.data.user.name || '',
+            phone: res.data.user.phone || '',
+            address: res.data.user.address || ''
+          }));
+        }
+      }
+    } catch (err) {
+      setClaimError(err.response?.data?.message || 'Verification failed. No matching order found for this email/phone.');
+    } finally {
+      setClaiming(false);
+    }
+  };
 
   // Fetch Public Scan Reasons
   const fetchScanReasons = async () => {
@@ -279,14 +423,26 @@ function PublicQRScanView() {
   // Handle First-Time Registration Form
   const handleRegisterSubmit = async (e) => {
     e.preventDefault();
+    const cleanPhone = (activationPhone || regForm.phone || '').trim().replace(/\D/g, '').slice(-10);
+    if (!isPhoneVerified) {
+      setRegError('⚠️ Please verify your mobile number with OTP code first before activating QR.');
+      return;
+    }
     setRegistering(true);
     setRegError('');
     try {
-      const res = await axios.post(`${API_BASE}/public/qr/${token}/register`, regForm);
+      const res = await axios.post(`${API_BASE}/public/qr/${token}/register`, {
+        ...regForm,
+        phone: cleanPhone
+      });
       if (res.data.success) {
-        localStorage.setItem('safe_drive_user_token', res.data.token);
-        localStorage.setItem('safe_drive_user_data', JSON.stringify(res.data.user));
-        alert('🎉 Vehicle registered and QR activated successfully!');
+        if (res.data.token) {
+          localStorage.setItem('safe_drive_user_token', res.data.token);
+        }
+        if (res.data.user) {
+          localStorage.setItem('safe_drive_user_data', JSON.stringify(res.data.user));
+        }
+        alert('🎉 Mobile number verified & QR protection activated successfully!');
         fetchQRDetails();
       }
     } catch (err) {
@@ -369,201 +525,295 @@ function PublicQRScanView() {
     );
   }
 
-  // STATE 1: UNREGISTERED QR (FIRST-TIME REGISTRATION)
-  if (qrData.status === 'UNREGISTERED') {
+  // STATE 1: UNREGISTERED QR (FIRST-TIME VEHICLE REGISTRATION WITH MOBILE OTP)
+  if (qrData.status === 'UNREGISTERED' || qrData.status === 'UNCLAIMED_PHYSICAL') {
     return (
-      <div className="min-h-screen bg-slate-100 text-slate-900 p-4 py-8 flex flex-col items-center">
-        <div className="max-w-xl w-full bg-white border border-slate-200 rounded-3xl p-6 md:p-8 shadow-xl">
-          <div className="flex items-center space-x-3 mb-6 pb-4 border-b border-slate-100">
-            <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl border border-indigo-100">
+      <div className="min-h-screen bg-slate-100 text-slate-900 p-4 py-8 flex flex-col items-center justify-center">
+        <div className="max-w-xl w-full bg-white border border-slate-200 rounded-3xl p-6 md:p-8 shadow-xl space-y-6">
+          <div className="flex items-center space-x-3 pb-4 border-b border-slate-100">
+            <div className="p-3 bg-[#1D56A5]/10 text-[#1D56A5] rounded-2xl border border-[#1D56A5]/20">
               <ShieldCheck className="w-8 h-8" />
             </div>
             <div>
               <h1 className="text-xl font-black text-slate-900">First-Time QR Activation</h1>
-              <p className="text-xs font-mono text-indigo-600 font-bold">QR Code: {qrData.copyCode} ({qrData.productId})</p>
+              <p className="text-xs font-mono text-[#1D56A5] font-bold">QR Sticker: {qrData.copyCode} ({qrData.productId})</p>
             </div>
           </div>
 
           {regError && (
-            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">
-              {regError}
+            <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs font-semibold flex items-center space-x-2">
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              <span>{regError}</span>
             </div>
           )}
 
-          <form onSubmit={handleRegisterSubmit} className="space-y-6">
-            <div>
-              <h3 className="text-sm font-bold uppercase tracking-wider text-indigo-600 mb-3 flex items-center space-x-2">
-                <User className="w-4 h-4" />
-                <span>1. Vehicle Owner Details</span>
-              </h3>
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">Full Name *</label>
-                  <input
-                    type="text"
-                    required
-                    value={regForm.name}
-                    onChange={(e) => setRegForm({ ...regForm, name: e.target.value })}
-                    placeholder="e.g. Ved Prakash"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-slate-900 text-sm"
-                  />
-                </div>
+          {/* STEP 1: MOBILE OTP VERIFICATION (Shown First) */}
+          {!isPhoneVerified ? (
+            <div className="p-6 bg-slate-50 border border-slate-200 rounded-2xl space-y-5">
+              <div>
+                <h3 className="text-base font-black text-slate-900 flex items-center space-x-2">
+                  <Phone className="w-5 h-5 text-[#1D56A5]" />
+                  <span>Verify Mobile Number</span>
+                </h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  Please enter your 10-digit mobile number to verify and activate this QR safety pass.
+                </p>
+              </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">Phone Number (Calling) *</label>
-                    <input
-                      type="tel"
-                      required
-                      value={regForm.phone}
-                      onChange={(e) => setRegForm({ ...regForm, phone: e.target.value })}
-                      placeholder="e.g. 9876543210"
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-slate-900 text-sm font-mono"
-                    />
+              {otpError && (
+                <div className="p-3.5 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs font-semibold">
+                  {otpError}
+                </div>
+              )}
+              {otpMsg && (
+                <div className="p-3.5 bg-emerald-50 border border-[#259A3A]/30 rounded-xl text-[#259A3A] text-xs font-semibold">
+                  {otpMsg}
+                </div>
+              )}
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">Mobile Number *</label>
+                  <div className="flex space-x-2">
+                    <div className="relative flex-1">
+                      <span className="absolute left-3.5 top-3 text-xs text-slate-400 font-mono font-bold">+91</span>
+                      <input
+                        type="tel"
+                        maxLength={10}
+                        value={activationPhone}
+                        onChange={(e) => setActivationPhone(e.target.value.replace(/\D/g, ''))}
+                        placeholder="9876543210"
+                        className="w-full bg-white border border-slate-200 rounded-xl pl-12 pr-4 py-3 text-slate-900 text-sm font-mono tracking-wider focus:outline-hidden focus:border-[#1D56A5]"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleSendActivationOtp}
+                      disabled={otpLoading || activationPhone.length < 10}
+                      className="bg-[#1D56A5] hover:bg-[#164382] text-white text-xs font-bold px-5 py-3 rounded-xl transition shadow-sm disabled:opacity-50 shrink-0"
+                    >
+                      {otpLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <span>{otpSent ? 'Resend OTP' : 'Send OTP'}</span>}
+                    </button>
                   </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">WhatsApp Number</label>
-                    <input
-                      type="tel"
-                      value={regForm.whatsappNumber}
-                      onChange={(e) => setRegForm({ ...regForm, whatsappNumber: e.target.value })}
-                      placeholder="WhatsApp (optional)"
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-slate-900 text-sm font-mono"
-                    />
+                </div>
+
+                {otpSent && (
+                  <div className="pt-3 border-t border-slate-200/60 space-y-3">
+                    <label className="block text-xs font-bold text-slate-700">Enter 6-Digit OTP Code *</label>
+                    <div className="flex space-x-2">
+                      <input
+                        type="text"
+                        maxLength={6}
+                        value={activationOtp}
+                        onChange={(e) => setActivationOtp(e.target.value)}
+                        placeholder="123456"
+                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-slate-900 text-sm font-mono tracking-widest text-center focus:outline-hidden focus:border-[#259A3A]"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleVerifyActivationOtp}
+                        disabled={otpLoading || activationOtp.length < 6}
+                        className="bg-[#259A3A] hover:bg-[#1e7e2e] text-white text-xs font-bold px-6 py-3 rounded-xl transition shadow-sm disabled:opacity-50 shrink-0"
+                      >
+                        {otpLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <span>Verify & Continue →</span>}
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-slate-400">Default test OTP: <strong className="text-slate-700 font-mono">123456</strong></p>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            /* STEP 2: OWNER & VEHICLE REGISTRATION FORM (Opened only after OTP verified) */
+            <div className="space-y-6">
+              {/* Verified Banner */}
+              <div className="p-3.5 bg-emerald-50 rounded-2xl border border-[#259A3A]/30 flex items-center justify-between text-xs text-[#259A3A]">
+                <div className="flex items-center space-x-2">
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span className="font-bold">Verified Mobile: +91 {activationPhone}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsPhoneVerified(false);
+                    setOtpSent(false);
+                  }}
+                  className="text-xs text-slate-500 hover:text-slate-800 underline font-medium"
+                >
+                  Change Number
+                </button>
+              </div>
+
+              <form onSubmit={handleRegisterSubmit} className="space-y-6">
+                <div>
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-[#1D56A5] mb-3 flex items-center space-x-1.5">
+                    <User className="w-4 h-4" />
+                    <span>1. Owner Profile</span>
+                  </h3>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-600 mb-1">Full Name *</label>
+                      <input
+                        type="text"
+                        required
+                        value={regForm.name}
+                        onChange={(e) => setRegForm({ ...regForm, name: e.target.value })}
+                        placeholder="e.g. Rajesh Kumar"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-slate-900 text-sm"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-600 mb-1">WhatsApp Alert Number</label>
+                        <input
+                          type="tel"
+                          value={regForm.whatsappNumber}
+                          onChange={(e) => setRegForm({ ...regForm, whatsappNumber: e.target.value })}
+                          placeholder="WhatsApp Number"
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-slate-900 text-sm font-mono"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-600 mb-1">City / Address *</label>
+                        <input
+                          type="text"
+                          required
+                          value={regForm.address}
+                          onChange={(e) => setRegForm({ ...regForm, address: e.target.value })}
+                          placeholder="e.g. Lucknow, UP"
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-slate-900 text-sm"
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">Address / City *</label>
-                  <input
-                    type="text"
-                    required
-                    value={regForm.address}
-                    onChange={(e) => setRegForm({ ...regForm, address: e.target.value })}
-                    placeholder="e.g. Hazratganj, Lucknow"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-slate-900 text-sm"
-                  />
+                <div className="pt-4 border-t border-slate-100">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-[#1D56A5] mb-3 flex items-center space-x-1.5">
+                    <ShieldCheck className="w-4 h-4" />
+                    <span>2. Item / Asset Details (Vehicle, Bag, Luggage, etc.)</span>
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-600 mb-1">Brand / Make *</label>
+                      <input
+                        type="text"
+                        required
+                        value={regForm.vehicleBrand}
+                        onChange={(e) => setRegForm({ ...regForm, vehicleBrand: e.target.value })}
+                        placeholder="e.g. Hyundai, Samsonite, Apple"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-900 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-600 mb-1">Item / Model Name *</label>
+                      <input
+                        type="text"
+                        required
+                        value={regForm.vehicleName}
+                        onChange={(e) => setRegForm({ ...regForm, vehicleName: e.target.value })}
+                        placeholder="e.g. Creta, Travel Bag, Laptop"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-900 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-600 mb-1">Plate / Tag / Serial No. *</label>
+                      <input
+                        type="text"
+                        required
+                        value={regForm.vehicleNumber}
+                        onChange={(e) => setRegForm({ ...regForm, vehicleNumber: e.target.value })}
+                        placeholder="e.g. UP32AB1234, BAG-01"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-900 text-sm uppercase font-mono"
+                      />
+                    </div>
+                  </div>
                 </div>
-              </div>
+
+                <div className="pt-4 border-t border-slate-100">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-rose-600 mb-3 flex items-center space-x-1.5">
+                    <AlertTriangle className="w-4 h-4" />
+                    <span>3. Emergency Contacts (2 Required)</span>
+                  </h3>
+
+                  <div className="space-y-3">
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                      <div className="text-[11px] font-bold text-slate-700 mb-1.5">Emergency Contact 1</div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        <input
+                          type="text"
+                          required
+                          placeholder="Contact 1 Name (e.g. Brother)"
+                          value={regForm.emergencyContacts[0].name}
+                          onChange={(e) => {
+                            const updated = [...regForm.emergencyContacts];
+                            updated[0].name = e.target.value;
+                            setRegForm({ ...regForm, emergencyContacts: updated });
+                          }}
+                          className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-900 text-sm"
+                        />
+                        <input
+                          type="tel"
+                          required
+                          placeholder="Contact 1 Mobile"
+                          value={regForm.emergencyContacts[0].number}
+                          onChange={(e) => {
+                            const updated = [...regForm.emergencyContacts];
+                            updated[0].number = e.target.value;
+                            setRegForm({ ...regForm, emergencyContacts: updated });
+                          }}
+                          className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-900 text-sm font-mono"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                      <div className="text-[11px] font-bold text-slate-700 mb-1.5">Emergency Contact 2</div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        <input
+                          type="text"
+                          required
+                          placeholder="Contact 2 Name (e.g. Friend)"
+                          value={regForm.emergencyContacts[1].name}
+                          onChange={(e) => {
+                            const updated = [...regForm.emergencyContacts];
+                            updated[1].name = e.target.value;
+                            setRegForm({ ...regForm, emergencyContacts: updated });
+                          }}
+                          className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-900 text-sm"
+                        />
+                        <input
+                          type="tel"
+                          required
+                          placeholder="Contact 2 Mobile"
+                          value={regForm.emergencyContacts[1].number}
+                          onChange={(e) => {
+                            const updated = [...regForm.emergencyContacts];
+                            updated[1].number = e.target.value;
+                            setRegForm({ ...regForm, emergencyContacts: updated });
+                          }}
+                          className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-900 text-sm font-mono"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={registering}
+                  className="w-full bg-[#1D56A5] hover:bg-[#164382] text-white font-bold py-3.5 rounded-2xl shadow-lg shadow-[#1D56A5]/25 transition flex items-center justify-center space-x-2 text-sm disabled:opacity-50"
+                >
+                  {registering ? (
+                    <RefreshCw className="w-5 h-5 animate-spin" />
+                  ) : (
+                    <span>🚀 Complete Registration & Activate QR</span>
+                  )}
+                </button>
+              </form>
             </div>
-
-            <div className="pt-4 border-t border-slate-100">
-              <h3 className="text-sm font-bold uppercase tracking-wider text-indigo-600 mb-3 flex items-center space-x-2">
-                <Car className="w-4 h-4" />
-                <span>2. Vehicle Information</span>
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">Brand *</label>
-                  <input
-                    type="text"
-                    required
-                    value={regForm.vehicleBrand}
-                    onChange={(e) => setRegForm({ ...regForm, vehicleBrand: e.target.value })}
-                    placeholder="e.g. Hyundai"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-900 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">Model Name *</label>
-                  <input
-                    type="text"
-                    required
-                    value={regForm.vehicleName}
-                    onChange={(e) => setRegForm({ ...regForm, vehicleName: e.target.value })}
-                    placeholder="e.g. Creta"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-900 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">Number Plate *</label>
-                  <input
-                    type="text"
-                    required
-                    value={regForm.vehicleNumber}
-                    onChange={(e) => setRegForm({ ...regForm, vehicleNumber: e.target.value })}
-                    placeholder="e.g. UP32AB1234"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-900 text-sm uppercase font-mono"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="pt-4 border-t border-slate-100">
-              <h3 className="text-sm font-bold uppercase tracking-wider text-red-600 mb-3 flex items-center space-x-2">
-                <AlertTriangle className="w-4 h-4" />
-                <span>3. Emergency Contacts (2 Required)</span>
-              </h3>
-
-              <div className="p-3 bg-slate-50 rounded-xl mb-3 border border-slate-200">
-                <div className="text-xs font-bold text-slate-700 mb-2">Emergency Contact 1</div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                  <input
-                    type="text"
-                    required
-                    placeholder="Contact 1 Name (e.g. Brother)"
-                    value={regForm.emergencyContacts[0].name}
-                    onChange={(e) => {
-                      const updated = [...regForm.emergencyContacts];
-                      updated[0].name = e.target.value;
-                      setRegForm({ ...regForm, emergencyContacts: updated });
-                    }}
-                    className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-900 text-sm"
-                  />
-                  <input
-                    type="tel"
-                    required
-                    placeholder="Contact 1 Phone"
-                    value={regForm.emergencyContacts[0].number}
-                    onChange={(e) => {
-                      const updated = [...regForm.emergencyContacts];
-                      updated[0].number = e.target.value;
-                      setRegForm({ ...regForm, emergencyContacts: updated });
-                    }}
-                    className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-900 text-sm font-mono"
-                  />
-                </div>
-              </div>
-
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                <div className="text-xs font-bold text-slate-700 mb-2">Emergency Contact 2</div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                  <input
-                    type="text"
-                    required
-                    placeholder="Contact 2 Name (e.g. Friend)"
-                    value={regForm.emergencyContacts[1].name}
-                    onChange={(e) => {
-                      const updated = [...regForm.emergencyContacts];
-                      updated[1].name = e.target.value;
-                      setRegForm({ ...regForm, emergencyContacts: updated });
-                    }}
-                    className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-900 text-sm"
-                  />
-                  <input
-                    type="tel"
-                    required
-                    placeholder="Contact 2 Phone"
-                    value={regForm.emergencyContacts[1].number}
-                    onChange={(e) => {
-                      const updated = [...regForm.emergencyContacts];
-                      updated[1].number = e.target.value;
-                      setRegForm({ ...regForm, emergencyContacts: updated });
-                    }}
-                    className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-900 text-sm font-mono"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={registering}
-              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-2xl shadow-lg shadow-indigo-600/20 transition flex items-center justify-center space-x-2 text-base"
-            >
-              {registering ? <RefreshCw className="w-5 h-5 animate-spin" /> : <span>Activate QR & Start Protection</span>}
-            </button>
-          </form>
+          )}
         </div>
       </div>
     );
@@ -882,15 +1132,36 @@ function UserDashboardView() {
   const [token, setToken] = useState(localStorage.getItem('safe_drive_user_token') || '');
   const [user, setUser] = useState(JSON.parse(localStorage.getItem('safe_drive_user_data') || 'null'));
 
-  // Auth Forms
-  const [phone, setPhone] = useState('8888888888');
-  const [password, setPassword] = useState('user123');
+  // Login Mode: 'MOBILE_OTP' | 'PASSWORD'
+  const [loginMode, setLoginMode] = useState('MOBILE_OTP');
+
+  // Password Auth Form
+  const [phone, setPhone] = useState('');
+  const [password, setPassword] = useState('');
+
+  // Mobile OTP Auth Form
+  const [loginPhone, setLoginPhone] = useState('');
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginOtp, setLoginOtp] = useState('');
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpLoading, setOtpLoading] = useState(false);
+  const [otpSuccessMsg, setOtpSuccessMsg] = useState('');
+
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState('');
+
+  // Dashboard Navigation Tabs: 'QRS' | 'ORDERS'
+  const [dashTab, setDashTab] = useState('QRS');
 
   // Dashboard Data
   const [dashData, setDashData] = useState(null);
   const [loadingDash, setLoadingDash] = useState(false);
+
+  // Orders Data
+  const [orders, setOrders] = useState([]);
+  const [loadingOrders, setLoadingOrders] = useState(false);
+  const [viewingDigitalPass, setViewingDigitalPass] = useState(null);
+  const [viewingOrder, setViewingOrder] = useState(null);
 
   // Packages & Quota Modals
   const [packages, setPackages] = useState([]);
@@ -902,11 +1173,37 @@ function UserDashboardView() {
   const [ledger, setLedger] = useState([]);
   const [loadingLedger, setLoadingLedger] = useState(false);
 
+  // Activate Purchased QR Modal
+  const [activatingQR, setActivatingQR] = useState(null);
+  const [activationForm, setActivationForm] = useState({
+    vehicleBrand: '',
+    vehicleName: '',
+    vehicleNumber: '',
+    contact1Name: '',
+    contact1Phone: '',
+    contact2Name: '',
+    contact2Phone: ''
+  });
+  // Profile Edit State
+  const [profileForm, setProfileForm] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    whatsappNumber: '',
+    address: '',
+    city: '',
+    state: ''
+  });
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileSuccess, setProfileSuccess] = useState('');
+  const [profileError, setProfileError] = useState('');
+
   const authHeader = {
     headers: { Authorization: `Bearer ${token}` }
   };
 
-  const handleLogin = async (e) => {
+  // 1. Password Login
+  const handlePasswordLogin = async (e) => {
     e.preventDefault();
     setAuthLoading(true);
     setAuthError('');
@@ -920,6 +1217,58 @@ function UserDashboardView() {
       }
     } catch (err) {
       setAuthError(err.response?.data?.message || 'Login failed');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  // 2. Send Login OTP to Mobile Phone
+  const handleSendLoginOTP = async (e) => {
+    e.preventDefault();
+    const cleanPhone = loginPhone.trim();
+    if (!cleanPhone) {
+      setAuthError('Please enter your registered mobile number');
+      return;
+    }
+    setOtpLoading(true);
+    setAuthError('');
+    setOtpSuccessMsg('');
+    try {
+      const res = await axios.post(`${API_BASE}/auth/send-login-otp`, { phone: cleanPhone });
+      if (res.data.success) {
+        setOtpSent(true);
+        setOtpSuccessMsg(res.data.message || `OTP sent to mobile ${cleanPhone}`);
+        setLoginOtp('123456'); // Auto-fill default test OTP for convenience
+      }
+    } catch (err) {
+      setAuthError(err.response?.data?.message || 'Could not send login OTP.');
+    } finally {
+      setOtpLoading(false);
+    }
+  };
+
+  // 3. Verify Login OTP
+  const handleVerifyLoginOTP = async (e) => {
+    e.preventDefault();
+    if (!loginOtp || loginOtp.length < 4) {
+      setAuthError('Please enter valid OTP code');
+      return;
+    }
+    setAuthLoading(true);
+    setAuthError('');
+    try {
+      const res = await axios.post(`${API_BASE}/auth/verify-login-otp`, {
+        phone: loginPhone.trim(),
+        otp: loginOtp.trim()
+      });
+      if (res.data.success) {
+        setToken(res.data.token);
+        setUser(res.data.user);
+        localStorage.setItem('safe_drive_user_token', res.data.token);
+        localStorage.setItem('safe_drive_user_data', JSON.stringify(res.data.user));
+      }
+    } catch (err) {
+      setAuthError(err.response?.data?.message || 'Invalid or expired OTP');
     } finally {
       setAuthLoading(false);
     }
@@ -939,6 +1288,17 @@ function UserDashboardView() {
       const res = await axios.get(`${API_BASE}/user/dashboard`, authHeader);
       if (res.data.success) {
         setDashData(res.data);
+        if (res.data.user) {
+          setProfileForm({
+            name: res.data.user.name || '',
+            email: res.data.user.email || '',
+            phone: res.data.user.phone || '',
+            whatsappNumber: res.data.user.whatsappNumber || res.data.user.phone || '',
+            address: res.data.user.address || '',
+            city: res.data.user.city || '',
+            state: res.data.user.state || ''
+          });
+        }
       }
     } catch (err) {
       console.error(err);
@@ -947,9 +1307,24 @@ function UserDashboardView() {
     }
   };
 
+  const fetchOrders = async () => {
+    if (!token) return;
+    setLoadingOrders(true);
+    try {
+      const res = await axios.get(`${API_BASE}/user/orders`, authHeader);
+      if (res.data.success) {
+        setOrders(res.data.orders);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingOrders(false);
+    }
+  };
+
   const fetchPackages = async () => {
     try {
-      const res = await axios.get(`${API_BASE}/admin/packages`, authHeader);
+      const res = await axios.get(`${API_BASE}/user/packages`, authHeader);
       if (res.data.success) {
         setPackages(res.data.packages);
       }
@@ -976,8 +1351,47 @@ function UserDashboardView() {
     if (token) {
       fetchDashboard();
       fetchPackages();
+      fetchOrders();
     }
   }, [token]);
+
+  // Activate Purchased QR set
+  const handleActivateQRSubmit = async (e) => {
+    e.preventDefault();
+    if (!activationForm.vehicleBrand || !activationForm.vehicleName || !activationForm.vehicleNumber) {
+      setActivationError('Please fill in all vehicle details.');
+      return;
+    }
+    if (!activationForm.contact1Phone || !activationForm.contact2Phone) {
+      setActivationError('Please provide 2 emergency contact numbers.');
+      return;
+    }
+
+    setActivatingLoading(true);
+    setActivationError('');
+    try {
+      const payload = {
+        qrId: activatingQR._id,
+        vehicleBrand: activationForm.vehicleBrand,
+        vehicleName: activationForm.vehicleName,
+        vehicleNumber: activationForm.vehicleNumber,
+        emergencyContacts: [
+          { name: activationForm.contact1Name || 'Primary Contact', number: activationForm.contact1Phone },
+          { name: activationForm.contact2Name || 'Secondary Contact', number: activationForm.contact2Phone }
+        ]
+      };
+      const res = await axios.post(`${API_BASE}/user/qr/activate`, payload, authHeader);
+      if (res.data.success) {
+        alert(res.data.message);
+        setActivatingQR(null);
+        fetchDashboard();
+      }
+    } catch (err) {
+      setActivationError(err.response?.data?.message || 'Activation failed');
+    } finally {
+      setActivatingLoading(false);
+    }
+  };
 
   // Buy Booster Quota
   const handleBuyPackage = async (pkg) => {
@@ -1022,87 +1436,177 @@ function UserDashboardView() {
     }
   };
 
+  // Update Profile Info
+  const handleUpdateProfile = async (e) => {
+    e.preventDefault();
+    setProfileSaving(true);
+    setProfileSuccess('');
+    setProfileError('');
+    try {
+      const res = await axios.put(`${API_BASE}/user/profile`, profileForm, authHeader);
+      if (res.data.success) {
+        setProfileSuccess(res.data.message);
+        localStorage.setItem('safe_drive_user_data', JSON.stringify(res.data.user));
+        fetchDashboard();
+      }
+    } catch (err) {
+      setProfileError(err.response?.data?.message || 'Failed to update profile');
+    } finally {
+      setProfileSaving(false);
+    }
+  };
+
   // If not logged in, render User Login Screen
   if (!token) {
     return (
       <div className="min-h-screen bg-slate-100 flex flex-col items-center justify-center p-4">
-        <div className="w-full max-w-md bg-white border border-slate-200 rounded-3xl p-8 shadow-xl">
-          <div className="flex items-center justify-center space-x-3 mb-6">
-            <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl border border-indigo-100">
+        <div className="w-full max-w-md bg-white border border-slate-200 rounded-3xl p-8 shadow-xl space-y-6">
+          <div className="flex items-center justify-center space-x-3 pb-4 border-b border-slate-100">
+            <div className="p-3 bg-[#1D56A5] text-white rounded-2xl shadow-md shadow-[#1D56A5]/25">
               <ShieldCheck className="w-8 h-8" />
             </div>
             <div>
-              <h1 className="text-2xl font-black text-slate-900">SAFE DRIVE</h1>
-              <p className="text-xs uppercase tracking-widest text-indigo-600 font-bold">Vehicle Owner Portal</p>
+              <h1 className="text-2xl font-black text-slate-900 tracking-tight">SAFE DRIVE</h1>
+              <p className="text-xs uppercase tracking-widest text-[#1D56A5] font-bold">Customer Portal & Dashboard</p>
             </div>
           </div>
 
           {authError && (
-            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">
+            <div className="p-3.5 bg-red-50 border border-[#E94E1A]/30 rounded-2xl text-[#E94E1A] text-xs font-semibold">
               {authError}
             </div>
           )}
 
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">Registered Phone</label>
-              <input
-                type="tel"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                required
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-900 font-mono text-sm focus:bg-white focus:outline-none focus:border-indigo-600 transition"
-                placeholder="e.g. 8888888888"
-              />
-            </div>
+          {/* MOBILE OTP LOGIN FORM */}
+          <div className="space-y-4">
+            {!otpSent ? (
+              <form onSubmit={handleSendLoginOTP} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                    Registered Mobile Number
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3.5 top-3.5 text-xs text-slate-400 font-mono font-bold">+91</span>
+                    <input
+                      type="tel"
+                      maxLength={10}
+                      required
+                      value={loginPhone}
+                      onChange={(e) => setLoginPhone(e.target.value.replace(/\D/g, ''))}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-12 pr-4 py-3 text-slate-900 text-sm font-mono tracking-wider focus:bg-white focus:outline-none focus:border-[#1D56A5] transition"
+                      placeholder="9876543210"
+                    />
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-1.5">Enter the 10-digit mobile number linked to your QR safety tag.</p>
+                </div>
 
-            <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">Password</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-900 text-sm focus:bg-white focus:outline-none focus:border-indigo-600 transition"
-                placeholder="••••••••"
-              />
-            </div>
+                <button
+                  type="submit"
+                  disabled={otpLoading || loginPhone.length < 10}
+                  className="w-full bg-[#1D56A5] hover:bg-[#164382] text-white font-bold py-3.5 rounded-xl shadow-lg shadow-[#1D56A5]/25 transition flex items-center justify-center space-x-2 text-xs disabled:opacity-50"
+                >
+                  {otpLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <span>Send Login OTP Code →</span>}
+                </button>
+              </form>
+            ) : (
+              <form onSubmit={handleVerifyLoginOTP} className="space-y-4 text-center">
+                {otpSuccessMsg && (
+                  <div className="p-2.5 bg-emerald-50 border border-[#259A3A]/30 rounded-xl text-[#259A3A] text-xs font-semibold">
+                    {otpSuccessMsg}
+                  </div>
+                )}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                    Enter 6-Digit OTP Code for +91 {loginPhone}
+                  </label>
+                  <input
+                    type="text"
+                    maxLength="6"
+                    autoFocus
+                    required
+                    value={loginOtp}
+                    onChange={(e) => setLoginOtp(e.target.value.replace(/\D/g, ''))}
+                    className="w-44 mx-auto bg-slate-50 border-2 border-[#1D56A5] rounded-2xl py-3 text-center text-3xl font-black font-mono tracking-widest text-slate-900 focus:bg-white focus:outline-none"
+                    placeholder="123456"
+                  />
+                  <p className="text-[11px] text-slate-400 mt-2 font-medium">Default Test OTP: <span className="font-mono font-bold text-[#1D56A5]">123456</span></p>
+                </div>
 
-            <button
-              type="submit"
-              disabled={authLoading}
-              className="w-full mt-6 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-indigo-600/20 transition flex items-center justify-center space-x-2"
+                <div className="flex space-x-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setOtpSent(false)}
+                    className="w-1/3 bg-slate-100 text-slate-700 font-bold py-3 rounded-xl text-xs hover:bg-slate-200"
+                  >
+                    Back
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={authLoading || loginOtp.length < 6}
+                    className="w-2/3 bg-[#259A3A] hover:bg-[#1e7e2e] text-white font-bold py-3 rounded-xl shadow-md text-xs transition flex items-center justify-center space-x-2 disabled:opacity-50"
+                  >
+                    {authLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <span>Verify & Login →</span>}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+
+          <div className="pt-4 border-t border-slate-100 text-center space-y-3">
+            <Link
+              to="/store"
+              className="inline-flex items-center space-x-2 bg-[#E9DFEE] hover:bg-[#d9cbe0] text-[#1D56A5] font-bold px-4 py-2.5 rounded-xl text-xs transition border border-[#1D56A5]/20 shadow-2xs w-full justify-center"
             >
-              {authLoading ? <RefreshCw className="w-5 h-5 animate-spin" /> : <span>Login to Vehicle Dashboard</span>}
-            </button>
-          </form>
-
-          <div className="mt-6 pt-6 border-t border-slate-100 text-center">
-            <p className="text-xs text-slate-500">
-              Demo Credentials: <span className="text-indigo-600 font-mono font-bold">8888888888 / user123</span>
-            </p>
+              <span>🛒 Buy QR Safety Kit in Store</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
           </div>
         </div>
       </div>
     );
   }
 
+  // Group unlinked QRs by unique productId so copies belong to 1 kit
+  const unlinkedKitMap = {};
+  (dashData?.qrs?.filter((q) => q.status === 'SOLD' || !q.vehicleId) || []).forEach((q) => {
+    const pId = q.productId || q.copyCode;
+    if (!unlinkedKitMap[pId]) {
+      unlinkedKitMap[pId] = {
+        productId: pId,
+        primaryQR: q,
+        qrType: q.qrType,
+        qrFor: q.qrFor,
+        status: q.status,
+        copies: []
+      };
+    }
+    unlinkedKitMap[pId].copies.push(q);
+  });
+  const unlinkedKits = Object.values(unlinkedKitMap);
+  const activeVehicles = dashData?.vehicles || [];
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 p-4 md:p-8">
       <div className="max-w-4xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="flex justify-between items-center bg-white border border-slate-200 p-5 rounded-3xl shadow-sm">
+        {/* Top Header */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white border border-slate-200 p-5 rounded-3xl shadow-sm gap-4">
           <div className="flex items-center space-x-3">
-            <div className="p-3 bg-indigo-600 text-white rounded-2xl shadow-md shadow-indigo-600/20">
+            <div className="p-3 bg-[#1D56A5] text-white rounded-2xl shadow-md shadow-[#1D56A5]/20">
               <Car className="w-6 h-6" />
             </div>
             <div>
               <h1 className="text-lg font-black text-slate-900">{dashData?.user?.name || user?.name}</h1>
-              <p className="text-xs text-slate-500 font-mono">{dashData?.user?.phone || user?.phone}</p>
+              <p className="text-xs text-slate-500 font-mono">{dashData?.user?.email || dashData?.user?.phone || user?.phone}</p>
             </div>
           </div>
 
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-2 w-full sm:w-auto justify-between sm:justify-end">
+            <Link
+              to="/store"
+              className="flex items-center space-x-1.5 bg-[#1D56A5] hover:bg-[#164382] text-white px-3.5 py-2 rounded-xl text-xs font-bold shadow-2xs transition"
+            >
+              <span>🛒 Store</span>
+            </Link>
             <button
               onClick={() => {
                 setShowLedgerModal(true);
@@ -1110,7 +1614,7 @@ function UserDashboardView() {
               }}
               className="flex items-center space-x-1.5 bg-slate-100 hover:bg-slate-200 px-3.5 py-2 rounded-xl text-xs font-bold text-slate-700 transition"
             >
-              <History className="w-4 h-4 text-indigo-600" />
+              <History className="w-4 h-4 text-[#1D56A5]" />
               <span className="hidden sm:inline">Ledger</span>
             </button>
             <button
@@ -1123,140 +1627,652 @@ function UserDashboardView() {
           </div>
         </div>
 
-        {/* Quota Wallet Cards */}
-        {dashData && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* CALL QUOTA */}
-            <div className="bg-white border border-slate-200 p-6 rounded-3xl shadow-sm">
-              <div className="flex justify-between items-start mb-3">
-                <div>
-                  <span className="text-xs uppercase font-bold text-emerald-700 tracking-wider">Voice Call Quota</span>
-                  <div className="text-4xl font-black text-slate-900 mt-1">
-                    {dashData.summary?.totalCallsRemaining}{' '}
-                    <span className="text-sm font-normal text-slate-500">Calls left</span>
-                  </div>
-                </div>
-                <div className="p-3 bg-emerald-50 text-emerald-600 rounded-2xl">
-                  <Phone className="w-6 h-6" />
-                </div>
-              </div>
-              <div className="text-xs text-slate-500 mb-4">
-                Total Used: <span className="font-bold text-slate-900">{dashData.summary?.totalCallsUsed} calls</span>
-              </div>
-              <button
-                onClick={() => setShowBuyModal(true)}
-                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-xl text-xs transition shadow-md shadow-emerald-600/20"
-              >
-                + Buy Call Booster
-              </button>
-            </div>
+        {/* Navigation Tabs: MY ITEMS & MY ORDERS & MY PROFILE */}
+        <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-2">
+          <button
+            onClick={() => setDashTab('QRS')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition ${
+              dashTab === 'QRS'
+                ? 'bg-[#1D56A5] text-white shadow-2xs'
+                : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
+            }`}
+          >
+            🏷️ Protected Items & QR Tags ({activeVehicles.length || unlinkedKits.length || 0})
+          </button>
+          <button
+            onClick={() => {
+              setDashTab('ORDERS');
+              fetchOrders();
+            }}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition ${
+              dashTab === 'ORDERS'
+                ? 'bg-[#1D56A5] text-white shadow-2xs'
+                : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
+            }`}
+          >
+            📦 My Order Invoices ({orders.length})
+          </button>
+          <button
+            onClick={() => setDashTab('PROFILE')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition ${
+              dashTab === 'PROFILE'
+                ? 'bg-[#1D56A5] text-white shadow-2xs'
+                : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
+            }`}
+          >
+            👤 My Profile & Address
+          </button>
+        </div>
 
-            {/* MESSAGE QUOTA */}
-            <div className="bg-white border border-slate-200 p-6 rounded-3xl shadow-sm">
-              <div className="flex justify-between items-start mb-3">
-                <div>
-                  <span className="text-xs uppercase font-bold text-blue-700 tracking-wider">Message / SMS Quota</span>
-                  <div className="text-4xl font-black text-slate-900 mt-1">
-                    {dashData.summary?.totalMessagesRemaining}{' '}
-                    <span className="text-sm font-normal text-slate-500">Msgs left</span>
+        {/* TAB 1: PROTECTED ITEMS & QR TAGS */}
+        {dashTab === 'QRS' && (
+          <div className="space-y-6">
+            {/* Quota Wallet Cards */}
+            {dashData && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* VOICE CALL QUOTA */}
+                <div className="bg-white border border-slate-200 p-6 rounded-3xl shadow-sm">
+                  <div className="flex justify-between items-start mb-3">
+                    <div>
+                      <span className="text-xs uppercase font-bold text-[#259A3A] tracking-wider">Voice Call Quota</span>
+                      <div className="text-4xl font-black text-slate-900 mt-1">
+                        {dashData.summary?.totalCallsRemaining}{' '}
+                        <span className="text-sm font-normal text-slate-500">Calls left</span>
+                      </div>
+                    </div>
+                    <div className="p-3 bg-emerald-50 text-[#259A3A] rounded-2xl">
+                      <Phone className="w-6 h-6" />
+                    </div>
                   </div>
+                  <div className="text-xs text-slate-500 mb-4">
+                    Total Used: <span className="font-bold text-slate-900">{dashData.summary?.totalCallsUsed} calls</span>
+                  </div>
+                  <button
+                    onClick={() => setShowBuyModal(true)}
+                    className="w-full bg-[#259A3A] hover:bg-[#1e7e2e] text-white font-bold py-2.5 rounded-xl text-xs transition shadow-md shadow-[#259A3A]/20"
+                  >
+                    + Buy Call Booster
+                  </button>
                 </div>
-                <div className="p-3 bg-blue-50 text-blue-600 rounded-2xl">
-                  <MessageSquare className="w-6 h-6" />
+
+                {/* MESSAGE QUOTA */}
+                <div className="bg-white border border-slate-200 p-6 rounded-3xl shadow-sm">
+                  <div className="flex justify-between items-start mb-3">
+                    <div>
+                      <span className="text-xs uppercase font-bold text-[#1D56A5] tracking-wider">Message / SMS Quota</span>
+                      <div className="text-4xl font-black text-slate-900 mt-1">
+                        {dashData.summary?.totalMessagesRemaining}{' '}
+                        <span className="text-sm font-normal text-slate-500">Msgs left</span>
+                      </div>
+                    </div>
+                    <div className="p-3 bg-blue-50 text-[#1D56A5] rounded-2xl">
+                      <MessageSquare className="w-6 h-6" />
+                    </div>
+                  </div>
+                  <div className="text-xs text-slate-500 mb-4">
+                    Total Used: <span className="font-bold text-slate-900">{dashData.summary?.totalMessagesUsed} msgs</span>
+                  </div>
+                  <button
+                    onClick={() => setShowBuyModal(true)}
+                    className="w-full bg-[#1D56A5] hover:bg-[#164382] text-white font-bold py-2.5 rounded-xl text-xs transition shadow-md shadow-[#1D56A5]/20"
+                  >
+                    + Buy Message Booster
+                  </button>
                 </div>
               </div>
-              <div className="text-xs text-slate-500 mb-4">
-                Total Used: <span className="font-bold text-slate-900">{dashData.summary?.totalMessagesUsed} msgs</span>
+            )}
+
+            {/* UNLINKED PURCHASED QR KITS (SOLD STATUS) */}
+            {unlinkedKits.length > 0 && (
+              <div className="bg-amber-50/70 border-2 border-amber-200 p-6 rounded-3xl space-y-4">
+                <div className="flex items-center space-x-2 text-amber-900 font-black text-base">
+                  <Sparkles className="w-5 h-5 text-amber-600" />
+                  <span>Purchased QR Kits Ready for Activation ({unlinkedKits.length})</span>
+                </div>
+                <p className="text-xs text-amber-700">
+                  You have purchased the following QR safety kit(s). Link your item/vehicle tag identifier and emergency contacts to activate protection.
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {unlinkedKits.map((kit) => (
+                    <div key={kit.productId} className="bg-white border border-amber-200 p-4 rounded-2xl shadow-xs flex flex-col justify-between space-y-3">
+                      <div>
+                        <div className="flex justify-between items-center">
+                          <span className="font-mono font-bold text-slate-900 text-base">🏷️ {kit.productId}</span>
+                          <span className="text-[10px] bg-indigo-50 text-indigo-700 font-bold px-2 py-0.5 rounded-full">
+                            Ready to Link
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-500 mt-1">
+                          Includes {kit.copies.length} Stickers ({kit.copies.map(c => c.copyCode).join(', ')})
+                        </p>
+                      </div>
+
+                      <Link
+                        to={`/q/${kit.primaryQR.publicToken}`}
+                        target="_blank"
+                        className="w-full bg-[#1D56A5] hover:bg-[#164382] text-white text-xs font-bold py-2.5 rounded-xl transition shadow-sm text-center block"
+                      >
+                        🏷️ Link Item / Vehicle & Activate ↗
+                      </Link>
+                    </div>
+                  ))}
+                </div>
               </div>
-              <button
-                onClick={() => setShowBuyModal(true)}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-xl text-xs transition shadow-md shadow-blue-600/20"
-              >
-                + Buy Message Booster
-              </button>
+            )}
+
+            {/* ACTIVATED ITEMS & QR TAGS TABLE */}
+            <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 pb-3 border-b border-slate-100">
+                <div>
+                  <h3 className="text-base font-black text-slate-900 flex items-center space-x-2">
+                    <ShieldCheck className="w-5 h-5 text-[#1D56A5]" />
+                    <span>Protected Items & Active QR Tags ({activeVehicles.length})</span>
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Vehicles, bags, luggage, and personal assets actively secured with Safe Drive QR smart tags
+                  </p>
+                </div>
+              </div>
+
+              {activeVehicles.length === 0 ? (
+                <div className="p-8 text-center text-slate-400 text-xs">
+                  No active items or vehicles registered yet.
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs text-slate-700">
+                    <thead className="bg-slate-50 text-[11px] uppercase font-bold text-slate-500 border-b border-slate-200">
+                      <tr>
+                        <th className="py-3 px-4">Item / Asset</th>
+                        <th className="py-3 px-4">Tag / Plate ID</th>
+                        <th className="py-3 px-4">QR Kit Set</th>
+                        <th className="py-3 px-4">Emergency Contacts</th>
+                        <th className="py-3 px-4">Validity</th>
+                        <th className="py-3 px-4 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {activeVehicles.map((v) => {
+                        const vehicleQRs = dashData.qrs?.filter((q) => q.vehicleId?._id === v._id || q.vehicleId === v._id) || [];
+                        const primaryQR = vehicleQRs[0];
+                        const copiesList = vehicleQRs.map(q => q.copyCode).join(', ');
+                        const qrCategory = primaryQR?.qrFor || 'Protected Item';
+                        const isDigital = primaryQR?.qrType === 'DIGITAL';
+
+                        return (
+                          <tr key={v._id} className="hover:bg-slate-50/80 transition">
+                            <td className="py-3.5 px-4">
+                              <div className="font-black text-slate-900 text-sm flex items-center space-x-1.5">
+                                <span>🏷️</span>
+                                <span>{v.vehicleBrand} {v.vehicleName}</span>
+                              </div>
+                              <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded mt-0.5 inline-block">
+                                {qrCategory}
+                              </span>
+                            </td>
+
+                            <td className="py-3.5 px-4 font-mono font-bold text-slate-900 text-xs">
+                              <span className="bg-[#E9DFEE] text-[#1D56A5] px-2.5 py-1 rounded-lg border border-[#1D56A5]/20">
+                                {v.vehicleNumber}
+                              </span>
+                            </td>
+
+                            <td className="py-3.5 px-4">
+                              <div className="flex items-center space-x-1.5 font-mono font-bold text-slate-900">
+                                <span>{primaryQR?.productId || 'SD-KIT'}</span>
+                                <span className={`text-[9px] px-1.5 py-0.2 rounded font-bold ${
+                                  isDigital ? 'bg-indigo-50 text-indigo-700' : 'bg-amber-50 text-amber-800'
+                                }`}>
+                                  {isDigital ? 'DIGITAL' : 'PHYSICAL'}
+                                </span>
+                              </div>
+                              <div className="text-[10px] text-slate-500 font-mono mt-0.5">
+                                Copies: {copiesList || '1 Sticker'}
+                              </div>
+                            </td>
+
+                            <td className="py-3.5 px-4 text-[11px] text-slate-600 space-y-0.5">
+                              {v.emergencyContacts && v.emergencyContacts.length > 0 ? (
+                                v.emergencyContacts.map((c, i) => (
+                                  <div key={i} className="truncate">
+                                    <span className="font-bold">{c.name}:</span> {c.number}
+                                  </div>
+                                ))
+                              ) : (
+                                <span className="text-slate-400">N/A</span>
+                              )}
+                            </td>
+
+                            <td className="py-3.5 px-4">
+                              <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-[#259A3A] border border-[#259A3A]/30 mb-0.5">
+                                Active
+                              </span>
+                              <div className="text-[10px] text-slate-500 font-mono">
+                                Exp: {primaryQR?.expiryDate ? new Date(primaryQR.expiryDate).toLocaleDateString() : '365 Days'}
+                              </div>
+                            </td>
+
+                            <td className="py-3.5 px-4 text-right space-y-1">
+                              {primaryQR && (
+                                <div className="flex items-center justify-end space-x-1.5">
+                                  <Link
+                                    to={`/q/${primaryQR.publicToken}`}
+                                    target="_blank"
+                                    className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold px-2.5 py-1.5 rounded-lg transition inline-flex items-center space-x-1"
+                                    title="View Public Scan Page"
+                                  >
+                                    <ExternalLink className="w-3 h-3 text-[#1D56A5]" />
+                                    <span>Scan Page</span>
+                                  </Link>
+                                  <button
+                                    onClick={() => handleRenewSubscription(primaryQR._id)}
+                                    className="bg-[#1D56A5] hover:bg-[#164382] text-white text-[11px] font-bold px-2.5 py-1.5 rounded-lg transition shadow-2xs inline-flex items-center space-x-1"
+                                  >
+                                    <RefreshCw className="w-3 h-3" />
+                                    <span>Renew</span>
+                                  </button>
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </div>
         )}
 
-        {/* My Protected Vehicles & QRs */}
-        {dashData?.vehicles?.map((v) => (
-          <div key={v._id} className="bg-white border border-slate-200 p-6 rounded-3xl shadow-sm space-y-6">
+        {/* TAB 2: ORDER HISTORY INVOICES */}
+        {dashTab === 'ORDERS' && (
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 md:p-8 shadow-sm space-y-6">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 pb-4 border-b border-slate-100">
               <div>
-                <h2 className="text-xl font-black text-slate-900">
-                  {v.vehicleBrand} {v.vehicleName}
-                </h2>
-                <div className="font-mono text-sm text-indigo-700 font-bold bg-indigo-50 px-3 py-1 rounded-xl inline-block mt-1">
-                  {v.vehicleNumber}
+                <h3 className="text-base font-black text-slate-900 flex items-center space-x-2">
+                  <ShoppingBag className="w-5 h-5 text-[#1D56A5]" />
+                  <span>My Purchase Orders & Invoices ({orders.length})</span>
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Track your physical sticker kit shipments and access your digital E-QR passes
+                </p>
+              </div>
+              <button
+                onClick={fetchOrders}
+                className="p-2 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-600 transition text-xs font-bold flex items-center space-x-1"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Refresh</span>
+              </button>
+            </div>
+
+            {loadingOrders ? (
+              <div className="p-12 text-center text-slate-400 flex flex-col items-center space-y-2">
+                <RefreshCw className="w-6 h-6 animate-spin text-[#1D56A5]" />
+                <span className="text-xs font-semibold">Loading order history...</span>
+              </div>
+            ) : orders.length === 0 ? (
+              <div className="p-12 text-center text-slate-400 space-y-3">
+                <div className="w-12 h-12 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-center mx-auto text-slate-400">
+                  <Package className="w-6 h-6" />
+                </div>
+                <div className="text-sm font-bold text-slate-700">No orders recorded yet</div>
+                <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                  You haven't bought any QR safety kits yet. Visit our official store to protect your vehicle.
+                </p>
+                <Link
+                  to="/store"
+                  className="inline-flex items-center space-x-1.5 bg-[#1D56A5] text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-md transition mt-2"
+                >
+                  <span>🛒 Visit Store</span>
+                </Link>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {orders.map((ord) => {
+                  const isDigital = ord.productType === 'DIGITAL';
+                  const prodImg = ord.productId?.imageUrl;
+                  const prodTitle = ord.productName || ord.productId?.title || ord.productId?.name || 'QR Safety Kit';
+                  const allottedCode = ord.claimedProductId || (ord.allocatedQRIds && ord.allocatedQRIds[0]?.productId) || null;
+
+                  return (
+                    <div
+                      key={ord._id}
+                      className="border border-slate-200 rounded-2xl p-5 hover:border-slate-300 transition shadow-2xs space-y-4 bg-slate-50/40"
+                    >
+                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pb-3 border-b border-slate-200/60">
+                        <div className="flex items-center space-x-3">
+                          {prodImg ? (
+                            <img
+                              src={prodImg}
+                              alt={prodTitle}
+                              className="w-12 h-12 rounded-xl object-cover border border-slate-200 shadow-2xs shrink-0"
+                            />
+                          ) : (
+                            <div className="w-12 h-12 rounded-xl bg-[#E9DFEE] text-[#1D56A5] flex items-center justify-center font-black shrink-0">
+                              <QrCode className="w-6 h-6" />
+                            </div>
+                          )}
+                          <div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h4 className="font-black text-slate-900 text-sm">{prodTitle}</h4>
+                              <span
+                                className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
+                                  isDigital
+                                    ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                                    : 'bg-amber-50 text-amber-800 border-amber-200'
+                                }`}
+                              >
+                                {isDigital ? '💻 DIGITAL PASS' : '📦 PHYSICAL KIT'}
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-slate-500 font-mono mt-0.5">
+                              Order #{ord.orderNumber || ord.orderId} • {new Date(ord.createdAt).toLocaleDateString()}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="text-left sm:text-right">
+                          <div className="text-lg font-black text-[#1D56A5]">₹{ord.amount}</div>
+                          <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            ✓ {ord.paymentStatus || 'PAID'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Order Details & Allotment Bar */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                        <div className="p-3 bg-white rounded-xl border border-slate-200">
+                          <span className="text-[10px] font-bold uppercase text-slate-400 block">Allotted Kit ID</span>
+                          <span className="font-mono font-bold text-slate-900 text-sm">
+                            {allottedCode ? `🏷️ ${allottedCode}` : '⏳ Assigning on Courier'}
+                          </span>
+                        </div>
+
+                        <div className="p-3 bg-white rounded-xl border border-slate-200">
+                          <span className="text-[10px] font-bold uppercase text-slate-400 block">Status / Delivery</span>
+                          <span className="font-bold text-slate-800">
+                            {isDigital ? '⚡ Instant Active Access' : `🚚 ${ord.deliveryStatus || 'PROCESSING'}`}
+                          </span>
+                        </div>
+
+                        <div className="p-3 bg-white rounded-xl border border-slate-200">
+                          <span className="text-[10px] font-bold uppercase text-slate-400 block">Payment Reference</span>
+                          <span className="font-mono text-slate-600 truncate block">
+                            {ord.razorpayPaymentId || ord.paymentId || 'Simulated'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Physical Address details if applicable */}
+                      {!isDigital && ord.deliveryAddress && (
+                        <div className="text-xs bg-white p-3 rounded-xl border border-slate-200 text-slate-600 flex items-start space-x-2">
+                          <MapPin className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+                          <div>
+                            <span className="font-bold text-slate-800">Shipping Address: </span>
+                            {ord.deliveryAddress}, {ord.city} {ord.state} - {ord.pincode}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Action Buttons */}
+                      <div className="pt-2 flex flex-wrap items-center justify-end gap-2 border-t border-slate-200/60">
+                        <button
+                          onClick={() => setViewingOrder(ord)}
+                          className="bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 text-xs font-bold px-3.5 py-2 rounded-xl shadow-2xs flex items-center space-x-1.5 transition"
+                        >
+                          <Eye className="w-3.5 h-3.5 text-[#1D56A5]" />
+                          <span>View Order Details</span>
+                        </button>
+
+                        {isDigital && ord.allocatedQRIds && ord.allocatedQRIds.length > 0 && (
+                          <button
+                            onClick={() => setViewingDigitalPass(ord)}
+                            className="bg-[#1D56A5] hover:bg-[#164382] text-white text-xs font-bold px-4 py-2 rounded-xl shadow-md shadow-[#1D56A5]/20 flex items-center space-x-1.5 transition"
+                          >
+                            <QrCode className="w-4 h-4" />
+                            <span>View Digital Pass</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* TAB 3: USER PROFILE */}
+        {dashTab === 'PROFILE' && (
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 md:p-8 shadow-sm space-y-6">
+            <div>
+              <h3 className="text-base font-black text-slate-900 flex items-center space-x-2">
+                <User className="w-5 h-5 text-[#1D56A5]" />
+                <span>Account Profile & Delivery Details</span>
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Manage your name, email, WhatsApp alert number, and delivery address
+              </p>
+            </div>
+
+            {profileSuccess && (
+              <div className="p-3.5 bg-emerald-50 border border-[#259A3A]/30 rounded-2xl text-[#259A3A] text-xs font-semibold">
+                {profileSuccess}
+              </div>
+            )}
+            {profileError && (
+              <div className="p-3.5 bg-red-50 border border-[#E94E1A]/30 rounded-2xl text-[#E94E1A] text-xs font-semibold">
+                {profileError}
+              </div>
+            )}
+
+            <form onSubmit={handleUpdateProfile} className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">Full Name</label>
+                  <input
+                    type="text"
+                    required
+                    value={profileForm.name}
+                    onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-900 focus:bg-white focus:outline-none focus:border-[#1D56A5]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">Registered Phone (Primary)</label>
+                  <input
+                    type="tel"
+                    disabled
+                    value={profileForm.phone}
+                    className="w-full bg-slate-100 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-mono font-bold text-slate-500 cursor-not-allowed"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">Email Address</label>
+                  <input
+                    type="email"
+                    required
+                    value={profileForm.email}
+                    onChange={(e) => setProfileForm({ ...profileForm, email: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-900 focus:bg-white focus:outline-none focus:border-[#1D56A5]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">WhatsApp Alert Mobile</label>
+                  <input
+                    type="tel"
+                    value={profileForm.whatsappNumber}
+                    onChange={(e) => setProfileForm({ ...profileForm, whatsappNumber: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-mono font-bold text-slate-900 focus:bg-white focus:outline-none focus:border-[#1D56A5]"
+                    placeholder="e.g. 9876543210"
+                  />
                 </div>
               </div>
 
-              <div className="flex items-center space-x-2">
-                <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-black px-3 py-1 rounded-full uppercase">
-                  Protected & Active
-                </span>
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">Delivery Address</label>
+                <textarea
+                  rows="2"
+                  value={profileForm.address}
+                  onChange={(e) => setProfileForm({ ...profileForm, address: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs text-slate-900 focus:bg-white focus:outline-none focus:border-[#1D56A5]"
+                />
               </div>
-            </div>
 
-            {/* Linked QR Code Cards */}
-            <div>
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">Linked Safe Drive QR Stickers</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {dashData.qrs
-                  ?.filter((q) => q.vehicleId?._id === v._id || q.vehicleId === v._id)
-                  .map((qr) => (
-                    <div key={qr._id} className="bg-slate-50 border border-slate-200 p-4 rounded-2xl flex items-center justify-between">
-                      <div>
-                        <div className="font-mono font-bold text-slate-900 text-base">{qr.copyCode}</div>
-                        <div className="text-[11px] text-slate-500 mt-1">
-                          Expires: <span className="text-slate-900 font-semibold">{qr.expiryDate ? new Date(qr.expiryDate).toLocaleDateString() : 'N/A'}</span>
-                        </div>
-                        <Link
-                          to={`/q/${qr.publicToken}`}
-                          target="_blank"
-                          className="inline-block text-xs text-indigo-600 font-bold hover:underline mt-2"
-                        >
-                          View Public Scan Page ↗
-                        </Link>
-                      </div>
-
-                      <button
-                        onClick={() => handleRenewSubscription(qr._id)}
-                        className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl transition shadow-sm"
-                      >
-                        Renew (₹199)
-                      </button>
-                    </div>
-                  ))}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">City</label>
+                  <input
+                    type="text"
+                    value={profileForm.city}
+                    onChange={(e) => setProfileForm({ ...profileForm, city: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs text-slate-900 focus:bg-white focus:outline-none focus:border-[#1D56A5]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">State</label>
+                  <input
+                    type="text"
+                    value={profileForm.state}
+                    onChange={(e) => setProfileForm({ ...profileForm, state: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs text-slate-900 focus:bg-white focus:outline-none focus:border-[#1D56A5]"
+                  />
+                </div>
               </div>
-            </div>
 
-            {/* Emergency Contacts */}
-            <div className="pt-4 border-t border-slate-100">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">Emergency Contacts (2)</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {v.emergencyContacts?.map((c, i) => (
-                  <div key={i} className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex justify-between items-center text-xs">
-                    <div>
-                      <div className="font-bold text-slate-900">{c.name}</div>
-                      <div className="font-mono text-emerald-700 font-bold">{c.number}</div>
-                    </div>
-                    <span className="text-[10px] bg-slate-200 text-slate-700 px-2 py-0.5 rounded font-mono font-bold">Contact {i + 1}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
+              <button
+                type="submit"
+                disabled={profileSaving}
+                className="bg-[#1D56A5] hover:bg-[#164382] text-white font-bold px-6 py-2.5 rounded-xl text-xs shadow-md shadow-[#1D56A5]/25 transition flex items-center space-x-2"
+              >
+                {profileSaving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <span>Save Profile Changes</span>}
+              </button>
+            </form>
           </div>
-        ))}
-
-        {/* Quota Preservation Guarantee Badge */}
-        <div className="bg-indigo-50 border border-indigo-100 p-4 rounded-2xl flex items-center space-x-3 text-xs text-indigo-900">
-          <Info className="w-5 h-5 flex-shrink-0 text-indigo-600" />
-          <span>
-            <strong className="text-slate-900">Safe Drive Guarantee:</strong> Unused calls and messages are NEVER lost. Even after expiration, your balance is preserved and restored upon renewal.
-          </span>
-        </div>
+        )}
       </div>
+
+      {/* ACTIVATE QR MODAL */}
+      {activatingQR && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-lg w-full p-6 md:p-8 shadow-2xl my-6">
+            <div className="flex justify-between items-start mb-4">
+              <div>
+                <h3 className="font-black text-lg text-slate-900">Activate Vehicle Protection</h3>
+                <p className="text-xs text-slate-500">Binding QR Kit: <strong className="text-[#1D56A5]">{activatingQR.copyCode}</strong></p>
+              </div>
+              <button onClick={() => setActivatingQR(null)} className="text-slate-400 hover:text-slate-700">✕</button>
+            </div>
+
+            {activationError && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs font-semibold">
+                {activationError}
+              </div>
+            )}
+
+            <form onSubmit={handleActivateQRSubmit} className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">Brand *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Hyundai, Tata"
+                    value={activationForm.vehicleBrand}
+                    onChange={(e) => setActivationForm({ ...activationForm, vehicleBrand: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">Model Name *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Creta, Nexon"
+                    value={activationForm.vehicleName}
+                    onChange={(e) => setActivationForm({ ...activationForm, vehicleName: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">Number Plate *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. UP32AB1234"
+                  value={activationForm.vehicleNumber}
+                  onChange={(e) => setActivationForm({ ...activationForm, vehicleNumber: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 font-mono font-bold uppercase"
+                />
+              </div>
+
+              <div className="border-t border-slate-100 pt-3 space-y-3">
+                <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">2 Emergency Contacts *</div>
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="text"
+                    placeholder="Contact 1 Name"
+                    value={activationForm.contact1Name}
+                    onChange={(e) => setActivationForm({ ...activationForm, contact1Name: e.target.value })}
+                    className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900"
+                  />
+                  <input
+                    type="tel"
+                    required
+                    placeholder="10-digit Phone"
+                    value={activationForm.contact1Phone}
+                    onChange={(e) => setActivationForm({ ...activationForm, contact1Phone: e.target.value })}
+                    className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 font-mono"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="text"
+                    placeholder="Contact 2 Name"
+                    value={activationForm.contact2Name}
+                    onChange={(e) => setActivationForm({ ...activationForm, contact2Name: e.target.value })}
+                    className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900"
+                  />
+                  <input
+                    type="tel"
+                    required
+                    placeholder="10-digit Phone"
+                    value={activationForm.contact2Phone}
+                    onChange={(e) => setActivationForm({ ...activationForm, contact2Phone: e.target.value })}
+                    className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="flex space-x-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setActivatingQR(null)}
+                  className="w-1/3 bg-slate-100 text-slate-700 font-bold py-2.5 rounded-xl text-xs"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={activatingLoading}
+                  className="w-2/3 bg-[#1D56A5] hover:bg-[#164382] text-white font-bold py-2.5 rounded-xl shadow-md text-xs transition flex items-center justify-center space-x-2"
+                >
+                  {activatingLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <span>Activate Vehicle</span>}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* BUY QUOTA MODAL */}
       {showBuyModal && (
@@ -1282,7 +2298,7 @@ function UserDashboardView() {
                   <button
                     onClick={() => handleBuyPackage(pkg)}
                     disabled={buyingLoading}
-                    className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition shadow-md shadow-indigo-600/20"
+                    className="bg-[#1D56A5] hover:bg-[#164382] text-white font-bold text-xs px-4 py-2.5 rounded-xl transition shadow-md shadow-[#1D56A5]/20"
                   >
                     Pay ₹{pkg.price}
                   </button>
@@ -1299,7 +2315,7 @@ function UserDashboardView() {
           <div className="bg-white border border-slate-200 rounded-3xl max-w-2xl w-full p-6 shadow-2xl max-h-[85vh] flex flex-col">
             <div className="flex justify-between items-center mb-4">
               <h3 className="font-bold text-lg text-slate-900 flex items-center space-x-2">
-                <History className="w-5 h-5 text-indigo-600" />
+                <History className="w-5 h-5 text-[#1D56A5]" />
                 <span>Quota Audit Ledger</span>
               </h3>
               <button onClick={() => setShowLedgerModal(false)} className="text-slate-400 hover:text-slate-700">✕</button>
@@ -1320,7 +2336,7 @@ function UserDashboardView() {
                     <div className="text-right">
                       <div
                         className={`font-mono font-bold ${
-                          tx.type === 'CREDIT' ? 'text-emerald-600' : 'text-red-600'
+                          tx.type === 'CREDIT' ? 'text-[#259A3A]' : 'text-[#E94E1A]'
                         }`}
                       >
                         {tx.type === 'CREDIT' ? '+' : '-'}{tx.quantity} {tx.category}
@@ -1329,6 +2345,231 @@ function UserDashboardView() {
                     </div>
                   </div>
                 ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DIGITAL E-QR PASS MODAL */}
+      {viewingDigitalPass && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl space-y-4 text-center border border-slate-200 animate-in fade-in zoom-in duration-200">
+            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+              <h3 className="font-black text-slate-900 text-sm flex items-center space-x-2">
+                <QrCode className="w-4 h-4 text-[#1D56A5]" />
+                <span>Digital E-QR Safety Pass</span>
+              </h3>
+              <button
+                onClick={() => setViewingDigitalPass(null)}
+                className="text-slate-400 hover:text-slate-700 font-black text-base"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 flex flex-col items-center">
+              {(() => {
+                const qrObj = viewingDigitalPass.allocatedQRIds?.[0];
+                const token = qrObj?.publicToken || 'digital_token';
+                const scanUrl = `${window.location.origin}/q/${token}`;
+                return (
+                  <>
+                    <SafeDriveQRCode value={scanUrl} size={180} className="bg-white p-2 rounded-xl border border-slate-200 shadow-xs" />
+                    <div className="font-mono font-black text-slate-900 text-base mt-3">
+                      {qrObj?.copyCode || qrObj?.productId || viewingDigitalPass.claimedProductId || 'SD-PASS'}
+                    </div>
+                    <div className="text-[10px] text-slate-400 font-mono mt-0.5">
+                      Type: {viewingDigitalPass.qrFor || 'Vehicle'} • Active 365 Days
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+
+            <p className="text-xs text-slate-500 leading-relaxed">
+              Save this digital pass on your phone or print to display inside your vehicle windshield for instant emergency calling.
+            </p>
+
+            <div className="flex space-x-2 pt-2">
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="w-1/2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold py-2.5 rounded-xl text-xs transition flex items-center justify-center space-x-1.5"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                <span>Print Pass</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewingDigitalPass(null)}
+                className="w-1/2 bg-[#1D56A5] hover:bg-[#164382] text-white font-bold py-2.5 rounded-xl text-xs transition shadow-md shadow-[#1D56A5]/25"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ORDER DETAILS & INVOICE MODAL */}
+      {viewingOrder && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 md:p-7 shadow-2xl space-y-5 border border-slate-200 animate-in fade-in zoom-in duration-200 max-h-[90vh] overflow-y-auto">
+            {/* 1. Header */}
+            <div className="flex justify-between items-start pb-3 border-b border-slate-100">
+              <div className="flex items-center space-x-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-[#1D56A5]/10 text-[#1D56A5] flex items-center justify-center font-bold shrink-0">
+                  <FileText className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-slate-900 text-base leading-tight">Order Details & Receipt</h3>
+                  <p className="text-[11px] text-slate-500 font-mono mt-0.5">
+                    #{viewingOrder.orderNumber || viewingOrder.orderId}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setViewingOrder(null)}
+                className="text-slate-400 hover:text-slate-700 font-black text-base p-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* 2. Product Summary Banner */}
+            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 flex items-center space-x-3.5">
+              {viewingOrder.productId?.imageUrl ? (
+                <img
+                  src={viewingOrder.productId.imageUrl}
+                  alt={viewingOrder.productName}
+                  className="w-14 h-14 rounded-xl object-cover border border-slate-200 shadow-2xs shrink-0"
+                />
+              ) : (
+                <div className="w-14 h-14 rounded-xl bg-[#E9DFEE] text-[#1D56A5] flex items-center justify-center font-black shrink-0">
+                  <ShoppingBag className="w-7 h-7" />
+                </div>
+              )}
+              <div className="flex-1 min-w-0">
+                <div className="flex flex-wrap items-center gap-1.5 mb-1">
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
+                    viewingOrder.productType === 'DIGITAL'
+                      ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                      : 'bg-amber-50 text-amber-800 border-amber-200'
+                  }`}>
+                    {viewingOrder.productType === 'DIGITAL' ? '💻 DIGITAL PASS' : '📦 PHYSICAL STICKER KIT'}
+                  </span>
+                </div>
+                <h4 className="font-black text-slate-900 text-sm truncate">
+                  {viewingOrder.productName || viewingOrder.productId?.title || viewingOrder.productId?.name || 'QR Protection Kit'}
+                </h4>
+                <div className="text-[10px] text-slate-500 mt-0.5">
+                  📞 {viewingOrder.metadata?.initialCalls || viewingOrder.productId?.initialCalls || 10} Calls • 💬 {viewingOrder.metadata?.initialMessages || viewingOrder.productId?.initialMessages || 20} SMS • ⏱️ {viewingOrder.metadata?.validityDays || viewingOrder.productId?.validityDays || 365} Days
+                </div>
+              </div>
+            </div>
+
+            {/* 3. Transaction & Pricing Grid */}
+            <div className="grid grid-cols-2 gap-3 text-xs">
+              <div className="p-3.5 bg-white rounded-2xl border border-slate-200 shadow-2xs">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Purchase Date & Time</span>
+                <span className="font-bold text-slate-900 block">
+                  {new Date(viewingOrder.createdAt).toLocaleDateString('en-IN', {
+                    day: 'numeric',
+                    month: 'short',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  })}
+                </span>
+              </div>
+
+              <div className="p-3.5 bg-white rounded-2xl border border-slate-200 shadow-2xs">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Total Amount Paid</span>
+                <div className="flex items-baseline space-x-1.5">
+                  <span className="text-base font-black text-[#1D56A5]">₹{viewingOrder.amount}</span>
+                  <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">✓ Paid</span>
+                </div>
+              </div>
+
+              <div className="p-3.5 bg-white rounded-2xl border border-slate-200 shadow-2xs">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Allotted Kit ID</span>
+                <span className="font-mono font-black text-slate-900 text-sm">
+                  {viewingOrder.claimedProductId || viewingOrder.allocatedQRIds?.[0]?.productId || 'SD-UNASSIGNED'}
+                </span>
+              </div>
+
+              <div className="p-3.5 bg-white rounded-2xl border border-slate-200 shadow-2xs">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Fulfillment Status</span>
+                <span className="font-bold text-slate-900 block">
+                  {viewingOrder.productType === 'DIGITAL' ? '⚡ Instant Active' : `🚚 ${viewingOrder.deliveryStatus || 'PROCESSING'}`}
+                </span>
+              </div>
+            </div>
+
+            {/* 4. Payment & Gateway IDs */}
+            <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 text-xs space-y-1.5 font-mono">
+              <div className="flex justify-between text-slate-500">
+                <span>Payment Reference:</span>
+                <span className="font-bold text-slate-800">{viewingOrder.razorpayPaymentId || viewingOrder.paymentId || 'Simulated'}</span>
+              </div>
+              {viewingOrder.razorpayOrderId && (
+                <div className="flex justify-between text-slate-500">
+                  <span>Gateway Order:</span>
+                  <span className="font-bold text-slate-800">{viewingOrder.razorpayOrderId}</span>
+                </div>
+              )}
+            </div>
+
+            {/* 5. Customer & Shipping Contact */}
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 text-xs space-y-2">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Customer & Shipping:</div>
+              <div className="text-slate-800 font-medium">
+                <strong>{viewingOrder.customerName || viewingOrder.userId?.name}</strong> • 📱 {viewingOrder.customerPhone || viewingOrder.userId?.phone}
+              </div>
+              <div className="text-slate-600 text-[11px]">
+                ✉️ {viewingOrder.customerEmail || viewingOrder.userId?.email}
+              </div>
+              {viewingOrder.deliveryAddress && (
+                <div className="text-slate-700 text-[11px] pt-1.5 border-t border-slate-100 flex items-start space-x-1.5">
+                  <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
+                  <span>{viewingOrder.deliveryAddress}, {viewingOrder.city} {viewingOrder.state} - {viewingOrder.pincode}</span>
+                </div>
+              )}
+            </div>
+
+            {/* 6. Modal Actions */}
+            <div className="flex space-x-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="w-1/2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold py-2.5 rounded-xl text-xs transition flex items-center justify-center space-x-1.5"
+              >
+                <Printer className="w-3.5 h-3.5 text-slate-600" />
+                <span>Print Receipt</span>
+              </button>
+
+              {viewingOrder.productType === 'DIGITAL' && viewingOrder.allocatedQRIds?.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const ord = viewingOrder;
+                    setViewingOrder(null);
+                    setViewingDigitalPass(ord);
+                  }}
+                  className="w-1/2 bg-[#1D56A5] hover:bg-[#164382] text-white font-bold py-2.5 rounded-xl text-xs transition shadow-md shadow-[#1D56A5]/25 flex items-center justify-center space-x-1.5"
+                >
+                  <QrCode className="w-3.5 h-3.5" />
+                  <span>Open E-QR Pass</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setViewingOrder(null)}
+                  className="w-1/2 bg-[#1D56A5] hover:bg-[#164382] text-white font-bold py-2.5 rounded-xl text-xs transition shadow-md shadow-[#1D56A5]/25"
+                >
+                  Close
+                </button>
               )}
             </div>
           </div>
@@ -1345,6 +2586,8 @@ export default function App() {
   return (
     <Router>
       <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route path="/store" element={<Store />} />
         <Route path="/q/:token" element={<PublicQRScanView />} />
         <Route path="/dashboard" element={<UserDashboardView />} />
         <Route path="/" element={<UserDashboardView />} />
