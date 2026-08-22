@@ -15,6 +15,7 @@ import {
   RefreshCw,
   Car,
   Layers,
+  Sparkles
 } from 'lucide-react';
 import { API_BASE } from '../config/api';
 
