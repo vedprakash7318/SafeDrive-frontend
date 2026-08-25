@@ -1152,31 +1152,27 @@ export default function PublicQRScan() {
           </button>
         </div>
 
-        {/* Call Initiated / Masked Bridge Prompt */}
-        {callInitiated && callResponse?.masked && (
-          <div className="p-4 bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50 border-2 border-emerald-300 rounded-2xl text-center space-y-2.5 animate-fadeIn shadow-md">
-            <div className="flex items-center justify-center space-x-2 text-emerald-800 font-black text-xs">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
-              <span>📞 Masked Call Bridge Connected</span>
+        {/* Call Initiated / Masked Bridge Status */}
+        {callInitiated && (
+          <div className={`p-4 rounded-2xl text-center space-y-2.5 animate-fadeIn shadow-md border-2 ${
+            callResponse?.masked
+              ? 'bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50 border-emerald-300'
+              : 'bg-amber-50 border-amber-300'
+          }`}>
+            <div className="flex items-center justify-center space-x-2 font-black text-xs">
+              <span className={`w-2.5 h-2.5 rounded-full ${callResponse?.masked ? 'bg-emerald-500 animate-ping' : 'bg-amber-500'}`} />
+              <span className={callResponse?.masked ? 'text-emerald-800' : 'text-amber-900'}>
+                {callResponse?.masked ? '📞 Masked Call Bridge Connected' : '📞 Call Connecting...'}
+              </span>
             </div>
             <p className="text-xs text-slate-700 font-medium leading-relaxed">
-              Exotel is calling your number <strong className="font-mono text-slate-900">+91 {scannerPhone}</strong>. Please answer the incoming call on your phone to speak directly with the owner!
+              {callResponse?.message || `Exotel is calling your number +91 ${scannerPhone}. Please pick up to connect with the owner.`}
             </p>
-            <div className="text-[10px] text-emerald-700 font-bold bg-emerald-100/70 py-1 px-3 rounded-lg inline-block">
-              🔒 SafeDrive Privacy Shield Active • Virtual Number Masking
-            </div>
-          </div>
-        )}
-
-        {callInitiated && !callResponse?.masked && phoneToCall && (
-          <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl text-center space-y-2 animate-fadeIn">
-            <span className="text-xs font-bold text-[#1E8A38]">Masked Call Connection Ready</span>
-            <a
-              href={`tel:${phoneToCall}`}
-              className="block bg-[#1E8A38] text-white font-black py-2.5 rounded-xl text-xs shadow-md"
-            >
-              📞 Tap Here to Dial Secure Line
-            </a>
+            {callResponse?.masked && (
+              <div className="text-[10px] text-emerald-700 font-bold bg-emerald-100/70 py-1 px-3 rounded-lg inline-block">
+                🔒 SafeDrive Privacy Shield Active • Virtual Caller (08040265530)
+              </div>
+            )}
           </div>
         )}
 
@@ -1193,7 +1189,9 @@ export default function PublicQRScan() {
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fadeIn">
           <div className="bg-white border border-slate-200 rounded-3xl max-w-sm w-full p-6 shadow-2xl space-y-4">
             <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-              <h3 className="font-black text-sm text-slate-900">Your Contact Number</h3>
+              <h3 className="font-black text-sm text-slate-900">
+                {pendingAction === 'CALL' ? '📞 Enter Number to Call Owner' : '💬 Enter Your Contact Number'}
+              </h3>
               <button
                 onClick={() => setShowScannerModal(false)}
                 className="w-7 h-7 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center font-bold"
@@ -1203,7 +1201,9 @@ export default function PublicQRScan() {
             </div>
 
             <p className="text-xs text-slate-500 leading-relaxed">
-              Please enter your 10-digit mobile number so the vehicle owner can identify this contact request.
+              {pendingAction === 'CALL'
+                ? 'Enter your 10-digit mobile number. Our SafeDrive Exotel Bridge will call your phone and connect you securely with the owner.'
+                : 'Please enter your 10-digit mobile number so the vehicle owner can identify this contact request.'}
             </p>
 
             {scannerModalError && (
@@ -1223,15 +1223,20 @@ export default function PublicQRScan() {
                   value={scannerInput}
                   onChange={(e) => setScannerInput(e.target.value.replace(/\D/g, '').slice(-10))}
                   placeholder="9876543210"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-11 pr-3 py-2.5 text-xs font-mono font-bold text-slate-900"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-11 pr-3 py-2.5 text-xs font-mono font-bold text-slate-900 focus:bg-white focus:outline-none focus:border-[#1E8A38]"
                 />
               </div>
 
               <button
                 type="submit"
-                className="w-full bg-[#1E8A38] text-white font-bold py-2.5 rounded-xl text-xs shadow-md transition"
+                disabled={actionLoading}
+                className="w-full bg-[#1E8A38] hover:bg-[#16702c] text-white font-black py-3 rounded-xl text-xs shadow-md transition flex items-center justify-center space-x-1.5 cursor-pointer active:scale-95 disabled:opacity-50"
               >
-                Continue →
+                {actionLoading ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <span>{pendingAction === 'CALL' ? '📞 Connect Secure Masked Call →' : 'Continue to WhatsApp →'}</span>
+                )}
               </button>
             </form>
           </div>
