@@ -250,33 +250,17 @@ export default function Contact() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-black text-slate-800 uppercase tracking-wider mb-1.5">
-                    Email Address *
-                  </label>
-                  <input
-                    type="email"
-                    required
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    placeholder="rahul@example.com"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs text-slate-900 font-bold focus:bg-white focus:outline-none focus:border-[#F36F21] transition"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-black text-slate-800 uppercase tracking-wider mb-1.5">
-                    Inquiry Subject
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.subject}
-                    onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
-                    placeholder="E.g. Bulk Tag Order / Technical Query"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs text-slate-900 font-bold focus:bg-white focus:outline-none focus:border-[#F36F21] transition"
-                  />
-                </div>
+              <div>
+                <label className="block text-xs font-black text-slate-800 uppercase tracking-wider mb-1.5">
+                  Email Address <span className="text-slate-400 font-normal">(Optional)</span>
+                </label>
+                <input
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  placeholder="rahul@example.com"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs text-slate-900 font-bold focus:bg-white focus:outline-none focus:border-[#F36F21] transition"
+                />
               </div>
 
               <div>

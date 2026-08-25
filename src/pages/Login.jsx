@@ -111,7 +111,7 @@ export default function Login() {
             <form onSubmit={handleSendLoginOTP} className="space-y-4">
               <div>
                 <label className="block text-xs font-black text-slate-800 uppercase tracking-wider mb-2">
-                  Registered Mobile Number
+                  Mobile Number
                 </label>
                 <div className="relative">
                   <span className="absolute left-3.5 top-3.5 text-xs text-slate-400 font-mono font-bold">+91</span>
@@ -126,7 +126,7 @@ export default function Login() {
                     placeholder="9876543210"
                   />
                 </div>
-                <p className="text-[11px] text-slate-400 mt-1.5 font-medium">Enter the 10-digit mobile number used when ordering or activating your tag.</p>
+                <p className="text-[11px] text-slate-400 mt-1.5 font-medium">Enter your 10-digit mobile number to sign in or register instantly via OTP.</p>
               </div>
 
               <button

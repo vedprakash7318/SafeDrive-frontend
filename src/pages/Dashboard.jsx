@@ -107,13 +107,20 @@ export default function Dashboard() {
   if (dashData?.qrs) {
     for (const qr of dashData.qrs.filter((q) => q.status === 'ACTIVE')) {
       const kitKey = qr.productId || qr._id;
+      const isVeh = qr.isVehicle !== false;
       if (!activeKitsMap.has(kitKey)) {
         activeKitsMap.set(kitKey, {
           productId: qr.productId,
-          vehicleNumber: qr.vehicleId?.vehicleNumber || qr.qrFor || 'Vehicle',
-          vehicleBrand: qr.vehicleId?.brand || '',
+          isVehicle: isVeh,
+          securityCode: qr.securityCode,
+          vehicleNumber: isVeh
+            ? (qr.vehicleId?.vehicleNumber || qr.qrFor || 'Vehicle')
+            : (qr.vehicleId?.itemName || qr.vehicleId?.vehicleName || `${qr.qrFor || 'Item'} Tag`),
+          vehicleBrand: isVeh
+            ? (qr.vehicleId?.brand || qr.vehicleId?.vehicleBrand || '')
+            : (qr.vehicleId?.itemType || qr.vehicleId?.vehicleBrand || ''),
           copies: [qr],
-          qrFor: qr.qrFor || 'Car',
+          qrFor: qr.qrFor || (isVeh ? 'Car' : 'Item'),
           createdAt: qr.createdAt,
           renewalAmount: qr.renewalAmount || 199
         });
@@ -150,33 +157,36 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-[#F36F21] selection:text-white">
-      <UserNavbar user={dashData?.user || storedUser} activeTagsCount={activeKitsList.length} />
+    <div className="min-h-screen bg-slate-50 font-sans selection:bg-[#1E8A38] selection:text-white">
+      <UserNavbar />
 
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
         
-        {/* Top Header Card */}
-        <div className="bg-white border border-slate-200 p-6 rounded-3xl shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div className="flex items-center space-x-3.5">
-            <div className="w-12 h-12 bg-[#1E8A38] text-white rounded-2xl flex items-center justify-center font-black shadow-md shadow-[#1E8A38]/20">
-              <Car className="w-6 h-6" />
+        {/* Welcome Top Banner */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 rounded-3xl border border-slate-200 shadow-xs">
+          <div>
+            <div className="flex items-center space-x-2">
+              <span className="text-xs font-black text-[#1E8A38] uppercase tracking-wider">Owner Dashboard</span>
+              <span className="inline-block w-2 h-2 rounded-full bg-[#1E8A38] animate-pulse"></span>
             </div>
-            <div>
-              <h1 className="text-xl font-black text-slate-900">{dashData?.user?.name || 'Owner Dashboard'}</h1>
-              <p className="text-xs text-slate-500 font-mono">+91 {dashData?.user?.phone} • {activeKitsList.length} Active Tags</p>
-            </div>
+            <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mt-1">
+              Welcome back, {storedUser.name || 'Protected Owner'}!
+            </h1>
+            <p className="text-xs text-slate-500 font-medium">
+              Manage your connected vehicles & tags, quota boosters, and real-time contact alerts.
+            </p>
           </div>
 
           <div className="flex items-center space-x-2">
             <button
-              onClick={() => setShowBuyModal(true)}
-              className="bg-[#F36F21] hover:bg-[#d85810] text-white text-xs font-black px-4 py-2.5 rounded-xl shadow-md transition flex items-center space-x-1.5 cursor-pointer active:scale-95"
+              onClick={fetchDashboard}
+              title="Refresh Stats"
+              className="p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition"
             >
-              <Zap className="w-4 h-4" />
-              <span>+ Add Quota Booster</span>
+              <RefreshCw className="w-4 h-4" />
             </button>
             <Link
-              to="/store"
+              to="/orders"
               className="bg-[#1E8A38] hover:bg-[#16702c] text-white text-xs font-black px-4 py-2.5 rounded-xl shadow-md transition flex items-center space-x-1.5 active:scale-95"
             >
               <ShoppingBag className="w-4 h-4" />
@@ -246,7 +256,7 @@ export default function Dashboard() {
         <div className="space-y-4">
           <div className="flex justify-between items-center">
             <h2 className="text-lg font-black text-slate-900">
-              Active Protected Vehicles ({activeKitsList.length})
+              Active Protected Vehicles & Tags ({activeKitsList.length})
             </h2>
           </div>
 
@@ -259,11 +269,16 @@ export default function Dashboard() {
                 <div className="flex justify-between items-start">
                   <div className="flex items-center space-x-3">
                     <div className="text-3xl p-2.5 bg-slate-50 rounded-2xl border border-slate-200">
-                      {kit.qrFor === 'Bike' ? '🏍️' : kit.qrFor === 'Truck' ? '🚚' : '🚗'}
+                      {kit.isVehicle ? (kit.qrFor === 'Bike' ? '🏍️' : kit.qrFor === 'Truck' ? '🚚' : '🚗') : '🧳'}
                     </div>
                     <div>
                       <h3 className="font-black text-lg text-slate-900">{kit.vehicleNumber}</h3>
                       <p className="text-xs text-slate-500 font-bold">{kit.vehicleBrand || kit.qrFor} Protection Kit</p>
+                      {kit.securityCode && (
+                        <div className="inline-block mt-1 bg-amber-100 text-amber-950 border border-amber-300 font-mono font-black text-[11px] px-2 py-0.5 rounded-md">
+                          TAG PIN: {kit.securityCode}
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -323,7 +338,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-      </main>
+      </div>
 
       {/* BUY QUOTA BOOSTER MODAL */}
       {showBuyModal && (

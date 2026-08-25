@@ -25,6 +25,37 @@ import {
 import { API_BASE } from '../config/api';
 import AppLoader from '../components/AppLoader';
 
+const getReasonEmoji = (r) => {
+  if (r.icon) return r.icon;
+  switch (r.iconKey) {
+    case 'luggage':
+    case 'briefcase':
+    case 'bag': return '🧳';
+    case 'pet':
+    case 'dog': return '🐾';
+    case 'key': return '🔑';
+    case 'laptop':
+    case 'device': return '💻';
+    case 'package':
+    case 'box': return '📦';
+    case 'wallet': return '👛';
+    case 'phone': return '📱';
+    case 'ban': return '🚫';
+    case 'unlock': return '🔓';
+    case 'car': return '🚗';
+    case 'bike': return '🏍️';
+    case 'truck': return '🚚';
+    case 'alert':
+    case 'warning': return '⚠️';
+    case 'bell': return '🔔';
+    case 'location': return '📍';
+    case 'shield': return '🛡️';
+    case 'other':
+    case 'message': return '💬';
+    default: return '📌';
+  }
+};
+
 export default function PublicQRScan() {
   const { token } = useParams();
   const navigate = useNavigate();
@@ -59,6 +90,9 @@ export default function PublicQRScan() {
     vehicleNumber: '',
     vehicleBrand: '',
     vehicleName: '',
+    itemName: '',
+    itemType: '',
+    securityCode: '',
     contact1Name: '',
     contact1Phone: '',
     contact2Name: '',
@@ -84,20 +118,18 @@ export default function PublicQRScan() {
   const [actionLoading, setActionLoading] = useState(false);
   const [publicAlertSuccessMsg, setPublicAlertSuccessMsg] = useState('');
   const [callInitiated, setCallInitiated] = useState(false);
+  const [callResponse, setCallResponse] = useState(null);
   const [phoneToCall, setPhoneToCall] = useState('');
 
   const fetchQRInfo = async () => {
     try {
       const [qrRes, reasonRes] = await Promise.all([
         axios.get(`${API_BASE}/public/qr/${token}`),
-        axios.get(`${API_BASE}/public/scan-reasons`)
+        axios.get(`${API_BASE}/public/scan-reasons?token=${token}`)
       ]);
 
       if (qrRes.data.success) {
         setQrData(qrRes.data);
-        if (qrRes.data.user?.phone) {
-          setRegPhone(qrRes.data.user.phone);
-        }
       } else {
         setQrData(qrRes.data);
       }
@@ -175,7 +207,7 @@ export default function PublicQRScan() {
 
       if (res.data.success) {
         setIsOtpVerified(true);
-        setRegStep(2); // Move to Vehicle & Contacts Form
+        setRegStep(2); // Move to Details Form
       } else {
         setRegError(res.data.message || 'Invalid OTP. Please enter 123456');
       }
@@ -186,14 +218,28 @@ export default function PublicQRScan() {
     }
   };
 
-  // 3. Register & Bind Vehicle
+  // 3. Register & Bind Vehicle or Item
   const handleCompleteRegistration = async (e) => {
     e.preventDefault();
-    const cleanPlate = regForm.vehicleNumber.trim().toUpperCase().replace(/\s+/g, ' ');
-    if (!cleanPlate || cleanPlate.length < 4) {
-      setRegError('Please enter a valid vehicle registration plate number.');
-      return;
+    const isVehicleTag = qrData?.isVehicle !== false;
+
+    if (isVehicleTag) {
+      const cleanPlate = regForm.vehicleNumber.trim().toUpperCase().replace(/\s+/g, ' ');
+      if (!cleanPlate || cleanPlate.length < 4) {
+        setRegError('Please enter a valid vehicle registration plate number.');
+        return;
+      }
+    } else {
+      if (!regForm.itemName.trim()) {
+        setRegError('Please enter an item / luggage title or name.');
+        return;
+      }
+      if (!regForm.securityCode || regForm.securityCode.trim().length !== 4) {
+        setRegError('Please enter the 4-digit Security Tag PIN printed on your physical tag.');
+        return;
+      }
     }
+
     if (!regForm.contact1Phone || !regForm.contact2Phone) {
       setRegError('Please provide 2 designated emergency contact mobile numbers.');
       return;
@@ -209,14 +255,21 @@ export default function PublicQRScan() {
         : (regForm.whatsappNumber.trim().replace(/\D/g, '').slice(-10) || cleanPhone);
 
       const payload = {
-        name: regForm.name || 'Vehicle Owner',
+        name: regForm.name || (isVehicleTag ? 'Vehicle Owner' : 'Item Owner'),
         phone: cleanPhone,
         whatsappNumber: cleanWhatsApp,
         email: regForm.email,
         gender: regForm.gender,
-        vehicleNumber: cleanPlate,
-        vehicleBrand: regForm.vehicleBrand || qrData?.qrFor || 'Vehicle',
-        vehicleName: regForm.vehicleName || 'Standard Vehicle',
+        // Vehicle fields
+        vehicleNumber: isVehicleTag
+          ? regForm.vehicleNumber.trim().toUpperCase().replace(/\s+/g, ' ')
+          : `${qrData?.productId || 'ITEM'}-${regForm.securityCode.trim()}`,
+        vehicleBrand: isVehicleTag ? (regForm.vehicleBrand || qrData?.qrFor || 'Vehicle') : (regForm.itemType || qrData?.qrFor || 'Luggage'),
+        vehicleName: isVehicleTag ? (regForm.vehicleName || 'Standard Vehicle') : (regForm.itemName || `${qrData?.qrFor || 'Item'} Tag`),
+        // Non-vehicle fields
+        itemName: regForm.itemName.trim() || regForm.vehicleName,
+        itemType: regForm.itemType.trim() || regForm.vehicleBrand || qrData?.qrFor || 'Luggage',
+        securityCode: regForm.securityCode.trim(),
         emergencyContacts: [
           { name: regForm.contact1Name || 'Emergency Contact 1', number: regForm.contact1Phone },
           { name: regForm.contact2Name || 'Emergency Contact 2', number: regForm.contact2Phone }
@@ -226,7 +279,7 @@ export default function PublicQRScan() {
       const res = await axios.post(`${API_BASE}/public/qr/${token}/register`, payload);
 
       if (res.data.success) {
-        setRegSuccess('🎉 Your Vehicle is Now Shielded with SafeDrive Protection!');
+        setRegSuccess(isVehicleTag ? '🎉 Your Vehicle is Now Shielded with SafeDrive Protection!' : `🎉 Your ${qrData?.qrFor || 'Item'} is Now Shielded with SafeDrive Protection!`);
         setRegStep(3); // Success state
 
         if (res.data.token && res.data.user) {
@@ -246,16 +299,13 @@ export default function PublicQRScan() {
     }
   };
 
-  // =============================================================
-  // CITIZEN SCAN ACTIONS (ACTIVE QR)
-  // =============================================================
-
-  // 1. Verify Last 4 Digits of Plate
+  // 1. Verify Last 4 Digits of Plate OR 4-Digit Security Tag PIN
   const handleVerifyLast4Digits = async (e) => {
     if (e) e.preventDefault();
-    const cleanLast4 = last4Input.trim().toUpperCase().replace(/[^a-zA-Z0-9]/g, '');
-    if (!cleanLast4 || cleanLast4.length !== 4) {
-      setPlateVerifyError('Please enter the 4 digits of the vehicle number plate.');
+    const isVehicleTag = qrData?.isVehicle !== false;
+    const cleanDigits = last4Input.trim().toUpperCase().replace(/[^a-zA-Z0-9]/g, '');
+    if (!cleanDigits || cleanDigits.length !== 4) {
+      setPlateVerifyError(isVehicleTag ? 'Please enter the last 4 digits of the vehicle plate.' : 'Please enter the 4-digit Security Tag PIN.');
       return;
     }
 
@@ -264,17 +314,18 @@ export default function PublicQRScan() {
 
     try {
       const res = await axios.post(`${API_BASE}/public/qr/${token}/verify-plate`, {
-        last4Digits: cleanLast4
+        last4Digits: cleanDigits,
+        securityCode: cleanDigits
       });
 
       if (res.data.success && res.data.verified) {
         setIsPlateVerified(true);
         setVerifiedVehicleData(res.data.vehicle);
       } else {
-        setPlateVerifyError(res.data.message || 'Incorrect last 4 digits. Please check the plate.');
+        setPlateVerifyError(res.data.message || 'Incorrect 4 digits. Please check and retry.');
       }
     } catch (err) {
-      setPlateVerifyError(err.response?.data?.message || 'Incorrect digits. Please check the physical plate.');
+      setPlateVerifyError(err.response?.data?.message || (isVehicleTag ? 'Incorrect digits. Please check the vehicle number plate.' : 'Incorrect 4-digit Security PIN. Please check the physical tag.'));
     } finally {
       setVerifyingPlate(false);
     }
@@ -383,6 +434,7 @@ export default function PublicQRScan() {
   const executeCallOwner = async (phone) => {
     setActionLoading(true);
     setPhoneToCall('');
+    setCallResponse(null);
     try {
       const res = await axios.post(`${API_BASE}/public/qr/${token}/call`, {
         scannerPhone: phone,
@@ -390,6 +442,7 @@ export default function PublicQRScan() {
         reason: selectedReason
       });
       if (res.data.success) {
+        setCallResponse(res.data);
         setPhoneToCall(res.data.targetPhone);
         setCallInitiated(true);
       }
@@ -426,6 +479,9 @@ export default function PublicQRScan() {
     return <AppLoader message="Verifying SafeDrive QR Security Tag..." />;
   }
 
+  const isVehicleTag = qrData?.isVehicle !== false;
+  const qrForLabel = qrData?.qrFor || (isVehicleTag ? 'Vehicle' : 'Item');
+
   // =============================================================
   // FLOW A: UNREGISTERED / INACTIVE QR CODE (ACTIVATION FLOW)
   // =============================================================
@@ -447,7 +503,7 @@ export default function PublicQRScan() {
               }}
             />
             <span className="text-[10px] uppercase font-black tracking-widest text-[#F36F21] bg-orange-50 px-3 py-1 rounded-full border border-orange-200">
-              ✨ Activate Your Vehicle Protection Tag
+              ✨ Activate Your {qrForLabel} Protection Tag
             </span>
           </div>
 
@@ -461,7 +517,7 @@ export default function PublicQRScan() {
             </div>
             <div className="text-right">
               <span className="text-[10px] bg-[#1E8A38] text-white font-bold px-2.5 py-1 rounded-lg uppercase">
-                {qrData?.qrFor || 'Vehicle'} Set
+                {qrForLabel} Set
               </span>
             </div>
           </div>
@@ -481,13 +537,14 @@ export default function PublicQRScan() {
               </div>
 
               {!isOtpSent ? (
-                <form onSubmit={handleSendActivationOTP} className="space-y-3">
+                <form onSubmit={handleSendActivationOTP} className="space-y-3" autoComplete="off">
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1">Mobile Number *</label>
                     <div className="relative">
                       <span className="absolute left-3.5 top-3 text-xs text-slate-400 font-mono font-bold">+91</span>
                       <input
                         type="tel"
+                        autoComplete="off"
                         maxLength={10}
                         required
                         value={regPhone}
@@ -508,7 +565,7 @@ export default function PublicQRScan() {
                   </button>
                 </form>
               ) : (
-                <form onSubmit={handleVerifyActivationOTP} className="space-y-3">
+                <form onSubmit={handleVerifyActivationOTP} className="space-y-3" autoComplete="off">
                   <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs flex justify-between items-center">
                     <span className="text-slate-600">OTP sent to: <strong>+91 {regPhone}</strong></span>
                     <button
@@ -524,6 +581,7 @@ export default function PublicQRScan() {
                     <label className="block text-xs font-bold text-slate-700 mb-1">Enter 6-Digit OTP *</label>
                     <input
                       type="text"
+                      autoComplete="off"
                       maxLength={6}
                       required
                       value={regOtp}
@@ -547,54 +605,118 @@ export default function PublicQRScan() {
             </div>
           )}
 
-          {/* STEP 2: VEHICLE & EMERGENCY DETAILS FORM */}
+          {/* STEP 2: DETAILS & SAFETY CONTACTS FORM */}
           {regStep === 2 && (
-            <form onSubmit={handleCompleteRegistration} className="space-y-4">
+            <form onSubmit={handleCompleteRegistration} className="space-y-4" autoComplete="off">
               <div>
-                <h3 className="text-sm font-black text-slate-900">Step 2: Vehicle & Safety Contacts</h3>
-                <p className="text-xs text-slate-500">Bind your vehicle number and set emergency alert lines.</p>
+                <h3 className="text-sm font-black text-slate-900">
+                  {isVehicleTag ? 'Step 2: Vehicle & Safety Contacts' : `Step 2: ${qrForLabel} Details & Safety Contacts`}
+                </h3>
+                <p className="text-xs text-slate-500">
+                  {isVehicleTag
+                    ? 'Bind your vehicle registration and set emergency alert lines.'
+                    : `Configure your ${qrForLabel} item details and emergency contact lines.`}
+                </p>
               </div>
 
               <div className="space-y-3">
-                {/* Vehicle Plate */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Vehicle Plate / Reg Number *</label>
-                  <input
-                    type="text"
-                    required
-                    value={regForm.vehicleNumber}
-                    onChange={(e) => setRegForm({ ...regForm, vehicleNumber: e.target.value.toUpperCase() })}
-                    placeholder="UP 32 AB 1234"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-mono font-black text-slate-900 focus:bg-white focus:outline-none focus:border-[#F36F21]"
-                  />
-                </div>
+                {isVehicleTag ? (
+                  <>
+                    {/* Vehicle Plate */}
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Vehicle Plate / Reg Number *</label>
+                      <input
+                        type="text"
+                        autoComplete="off"
+                        required
+                        value={regForm.vehicleNumber}
+                        onChange={(e) => setRegForm({ ...regForm, vehicleNumber: e.target.value.toUpperCase() })}
+                        placeholder="UP 32 AB 1234"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-mono font-black text-slate-900 focus:bg-white focus:outline-none focus:border-[#F36F21]"
+                      />
+                    </div>
 
-                {/* Brand & Model Row */}
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">Brand / Make *</label>
-                    <input
-                      type="text"
-                      required
-                      value={regForm.vehicleBrand}
-                      onChange={(e) => setRegForm({ ...regForm, vehicleBrand: e.target.value })}
-                      placeholder="e.g. Tata / Hero"
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:bg-white focus:outline-none focus:border-[#F36F21]"
-                    />
-                  </div>
+                    {/* Brand & Model Row */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">Brand / Make *</label>
+                        <input
+                          type="text"
+                          autoComplete="off"
+                          required
+                          value={regForm.vehicleBrand}
+                          onChange={(e) => setRegForm({ ...regForm, vehicleBrand: e.target.value })}
+                          placeholder="e.g. Tata / Hyundai / Hero"
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:bg-white focus:outline-none focus:border-[#F36F21]"
+                        />
+                      </div>
 
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">Model / Name *</label>
-                    <input
-                      type="text"
-                      required
-                      value={regForm.vehicleName}
-                      onChange={(e) => setRegForm({ ...regForm, vehicleName: e.target.value })}
-                      placeholder="e.g. Nexon / Splendor"
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:bg-white focus:outline-none focus:border-[#F36F21]"
-                    />
-                  </div>
-                </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">Model / Name *</label>
+                        <input
+                          type="text"
+                          autoComplete="off"
+                          required
+                          value={regForm.vehicleName}
+                          onChange={(e) => setRegForm({ ...regForm, vehicleName: e.target.value })}
+                          placeholder="e.g. Nexon / Creta / Splendor"
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:bg-white focus:outline-none focus:border-[#F36F21]"
+                        />
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    {/* Non-Vehicle: 4-Digit Security Tag PIN */}
+                    <div className="bg-amber-50/80 border border-amber-200 rounded-2xl p-3.5 space-y-1.5">
+                      <label className="block text-xs font-black text-amber-950 uppercase tracking-wider">
+                        🔑 4-Digit Security Tag PIN *
+                      </label>
+                      <p className="text-[11px] text-amber-800">
+                        Enter the 4-digit security code printed directly on your physical tag / kit sticker.
+                      </p>
+                      <input
+                        type="text"
+                        autoComplete="off"
+                        maxLength={4}
+                        required
+                        value={regForm.securityCode}
+                        onChange={(e) => setRegForm({ ...regForm, securityCode: e.target.value.replace(/\D/g, '') })}
+                        placeholder="e.g. 5831"
+                        className="w-full bg-white border-2 border-amber-300 rounded-xl text-center text-xl font-mono font-black tracking-widest text-slate-900 py-2 focus:outline-none focus:border-amber-600 shadow-inner"
+                      />
+                    </div>
+
+                    {/* Non-Vehicle: Item Name & Category */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">Item / Tag Title *</label>
+                        <input
+                          type="text"
+                          autoComplete="off"
+                          required
+                          value={regForm.itemName}
+                          onChange={(e) => setRegForm({ ...regForm, itemName: e.target.value })}
+                          placeholder="e.g. Blue Safari Trolley Bag"
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs font-bold text-slate-900 focus:bg-white focus:outline-none focus:border-[#F36F21]"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">Item Category / Type *</label>
+                        <input
+                          type="text"
+                          autoComplete="off"
+                          required
+                          value={regForm.itemType || qrForLabel}
+                          onChange={(e) => setRegForm({ ...regForm, itemType: e.target.value })}
+                          placeholder="e.g. Luggage / Backpack / Pet"
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:bg-white focus:outline-none focus:border-[#F36F21]"
+                        />
+                      </div>
+                    </div>
+                  </>
+                )}
 
                 {/* Owner Name & Gender Row */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -602,6 +724,7 @@ export default function PublicQRScan() {
                     <label className="block text-xs font-bold text-slate-700 mb-1">Owner Name *</label>
                     <input
                       type="text"
+                      autoComplete="off"
                       required
                       value={regForm.name}
                       onChange={(e) => setRegForm({ ...regForm, name: e.target.value })}
@@ -647,6 +770,7 @@ export default function PublicQRScan() {
                         <span className="absolute left-3 top-2 text-xs text-slate-400 font-mono font-bold">+91</span>
                         <input
                           type="tel"
+                          autoComplete="off"
                           maxLength={10}
                           required={!sameForWhatsApp}
                           value={regForm.whatsappNumber}
@@ -667,16 +791,18 @@ export default function PublicQRScan() {
                   <span className="text-[11px] font-black text-[#1E8A38] block">Emergency Contact 1 (Primary) *</span>
                   <input
                     type="text"
+                    autoComplete="off"
                     required
                     value={regForm.contact1Name}
                     onChange={(e) => setRegForm({ ...regForm, contact1Name: e.target.value })}
-                    placeholder="Name (e.g. Brother / Spouse)"
+                    placeholder="Name (e.g. Brother / Spouse / Friend)"
                     className="w-full bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-slate-900"
                   />
                   <div className="relative">
                     <span className="absolute left-3 top-1.5 text-xs text-slate-400 font-mono font-bold">+91</span>
                     <input
                       type="tel"
+                      autoComplete="off"
                       maxLength={10}
                       required
                       value={regForm.contact1Phone}
@@ -692,16 +818,18 @@ export default function PublicQRScan() {
                   <span className="text-[11px] font-black text-[#F36F21] block">Emergency Contact 2 (Secondary) *</span>
                   <input
                     type="text"
+                    autoComplete="off"
                     required
                     value={regForm.contact2Name}
                     onChange={(e) => setRegForm({ ...regForm, contact2Name: e.target.value })}
-                    placeholder="Name (e.g. Father / Friend)"
+                    placeholder="Name (e.g. Father / Mother / Colleague)"
                     className="w-full bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-slate-900"
                   />
                   <div className="relative">
                     <span className="absolute left-3 top-1.5 text-xs text-slate-400 font-mono font-bold">+91</span>
                     <input
                       type="tel"
+                      autoComplete="off"
                       maxLength={10}
                       required
                       value={regForm.contact2Phone}
@@ -719,7 +847,7 @@ export default function PublicQRScan() {
                 className="w-full bg-[#1E8A38] hover:bg-[#16702c] text-white font-black py-3.5 rounded-2xl text-xs shadow-md transition flex items-center justify-center space-x-2 disabled:opacity-50 cursor-pointer active:scale-95"
               >
                 {regActivating ? <RefreshCw className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
-                <span>Activate & Shield Vehicle Now →</span>
+                <span>Activate & Shield {qrForLabel} Now →</span>
               </button>
             </form>
           )}
@@ -730,7 +858,7 @@ export default function PublicQRScan() {
               <div className="w-16 h-16 bg-emerald-50 text-[#1E8A38] rounded-full flex items-center justify-center mx-auto border border-emerald-200 shadow-sm">
                 <ShieldCheck className="w-8 h-8" />
               </div>
-              <h3 className="text-xl font-black text-slate-900">Vehicle Protected & Active!</h3>
+              <h3 className="text-xl font-black text-slate-900">{qrForLabel} Protected & Active!</h3>
               <p className="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
                 Your QR Tag is now active and permanently bound. Anyone scanning will be able to alert you seamlessly via masked calls and WhatsApp.
               </p>
@@ -754,7 +882,7 @@ export default function PublicQRScan() {
   // FLOW B: ACTIVE QR CODE (CITIZEN SCANNER INTERFACE)
   // =============================================================
 
-  // STEP 1 OF CITIZEN SCAN: LAST 4 DIGITS VERIFICATION GATE
+  // STEP 1 OF CITIZEN SCAN: 4 DIGITS VERIFICATION GATE
   if (!isPlateVerified) {
     return (
       <div className="min-h-screen bg-slate-100 flex flex-col items-center justify-center p-4 font-sans selection:bg-[#F36F21] selection:text-white">
@@ -773,26 +901,26 @@ export default function PublicQRScan() {
               }}
             />
             <span className="text-[10px] uppercase font-black tracking-widest text-[#1D56A5] bg-blue-50 px-3 py-1 rounded-full border border-blue-200">
-              🔒 Vehicle Security Verification
+              🔒 {isVehicleTag ? 'Vehicle Security Verification' : `${qrForLabel} Security Verification`}
             </span>
           </div>
 
-          {/* Masked Vehicle Badge */}
+          {/* Masked Badge */}
           <div className="bg-slate-900 text-white p-5 rounded-2xl flex justify-between items-center shadow-md">
             <div className="flex items-center space-x-3.5">
               <div className="p-3 bg-slate-800 rounded-xl">
-                <Car className="w-6 h-6 text-[#F36F21]" />
+                {isVehicleTag ? <Car className="w-6 h-6 text-[#F36F21]" /> : <ShieldCheck className="w-6 h-6 text-[#F36F21]" />}
               </div>
               <div>
                 <span className="text-[10px] text-slate-400 font-bold uppercase block tracking-wider">
-                  Shielded Vehicle Plate
+                  {isVehicleTag ? 'Shielded Vehicle Plate' : `Shielded ${qrForLabel} Tag`}
                 </span>
                 <div className="text-xl font-black tracking-widest text-white font-mono">
-                  {qrData?.maskedPlate || '••••••••'}
+                  {isVehicleTag ? (qrData?.maskedPlate || '••••••••') : (qrData?.productId || 'PROTECTED TAG')}
                 </div>
-                {(qrData?.vehicleBrand || qrData?.vehicleName) && (
+                {(qrData?.itemName || qrData?.vehicleName || qrData?.vehicleBrand) && (
                   <span className="text-[11px] text-emerald-400 font-bold">
-                    {qrData.vehicleBrand} {qrData.vehicleName}
+                    {qrData.itemName || `${qrData.vehicleBrand || ''} ${qrData.vehicleName || ''}`}
                   </span>
                 )}
               </div>
@@ -808,23 +936,28 @@ export default function PublicQRScan() {
             </div>
           )}
 
-          {/* Last 4 Digits Prompt Form */}
-          <form onSubmit={handleVerifyLast4Digits} className="space-y-4">
+          {/* 4 Digits Prompt Form */}
+          <form onSubmit={handleVerifyLast4Digits} className="space-y-4" autoComplete="off">
             <div>
               <label className="block text-xs font-black text-slate-800 uppercase tracking-wider mb-1.5">
-                Enter Last 4 Digits of Vehicle Plate: *
+                {isVehicleTag
+                  ? 'Enter Last 4 Digits of Vehicle Plate: *'
+                  : 'Enter 4-Digit Security Tag PIN (Printed on Tag): *'}
               </label>
               <p className="text-[11px] text-slate-500 mb-2">
-                Enter the last 4 characters of the vehicle's registration number plate (e.g. <strong>9090</strong>) to establish a secure connection.
+                {isVehicleTag
+                  ? 'Enter the last 4 characters of the vehicle registration plate (e.g. 9090) to connect with the owner.'
+                  : 'Enter the 4-digit security code physically printed on this tag sticker to connect with the owner.'}
               </p>
               <input
                 type="text"
+                autoComplete="off"
                 maxLength={4}
                 required
                 autoFocus
                 value={last4Input}
                 onChange={(e) => setLast4Input(e.target.value.toUpperCase().replace(/[^a-zA-Z0-9]/g, ''))}
-                placeholder="9090"
+                placeholder={isVehicleTag ? '9090' : '5831'}
                 className="w-full bg-slate-50 border-2 border-slate-200 rounded-2xl text-center text-2xl font-mono font-black tracking-widest text-slate-900 py-3 focus:bg-white focus:outline-none focus:border-[#F36F21] transition shadow-inner"
               />
             </div>
@@ -835,7 +968,7 @@ export default function PublicQRScan() {
               className="w-full bg-[#F36F21] hover:bg-[#d85810] text-white font-black py-3.5 rounded-2xl text-xs shadow-md transition flex items-center justify-center space-x-2 disabled:opacity-50 cursor-pointer active:scale-95"
             >
               {verifyingPlate ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />}
-              <span>Verify Plate & Connect with Owner →</span>
+              <span>{isVehicleTag ? 'Verify Plate & Connect with Owner →' : 'Verify PIN & Connect with Owner →'}</span>
             </button>
           </form>
 
@@ -869,27 +1002,31 @@ export default function PublicQRScan() {
             }}
           />
           <span className="text-[10px] uppercase font-black tracking-widest text-[#1E8A38] bg-emerald-50 px-3 py-0.5 rounded-full border border-emerald-200">
-            ✓ Verified Secure Vehicle Connection
+            ✓ Verified Secure {isVehicleTag ? 'Vehicle' : (qrForLabel || 'Item')} Connection
           </span>
         </div>
 
-        {/* Verified Vehicle Badge */}
+        {/* Verified Badge */}
         <div className="bg-slate-900 text-white p-4 rounded-2xl flex justify-between items-center shadow-md">
           <div className="flex items-center space-x-3">
             <div className="p-2.5 bg-slate-800 rounded-xl">
-              <Car className="w-5 h-5 text-[#1E8A38]" />
+              {isVehicleTag ? <Car className="w-5 h-5 text-[#1E8A38]" /> : <ShieldCheck className="w-5 h-5 text-[#1E8A38]" />}
             </div>
             <div>
               <span className="text-[10px] text-emerald-400 font-bold uppercase flex items-center space-x-1">
                 <CheckCircle className="w-3 h-3" />
-                <span>Verified Shielded Vehicle</span>
+                <span>{isVehicleTag ? 'Verified Shielded Vehicle' : `Verified Shielded ${qrForLabel}`}</span>
               </span>
               <div className="text-base font-black tracking-wider text-white font-mono">
-                {verifiedVehicleData?.vehicleNumber || qrData?.vehicleNumber || 'PROTECTED VEHICLE'}
+                {isVehicleTag
+                  ? (verifiedVehicleData?.vehicleNumber || qrData?.vehicleNumber || 'PROTECTED VEHICLE')
+                  : (verifiedVehicleData?.itemName || qrData?.itemName || `${qrForLabel} Tag`)}
               </div>
-              {(verifiedVehicleData?.vehicleBrand || qrData?.vehicleBrand) && (
+              {(verifiedVehicleData?.vehicleBrand || qrData?.vehicleBrand || verifiedVehicleData?.itemType || qrData?.itemType) && (
                 <span className="text-[10px] text-slate-300 font-bold">
-                  {verifiedVehicleData?.vehicleBrand || qrData?.vehicleBrand} {verifiedVehicleData?.vehicleName || qrData?.vehicleName}
+                  {isVehicleTag
+                    ? `${verifiedVehicleData?.vehicleBrand || qrData?.vehicleBrand || ''} ${verifiedVehicleData?.vehicleName || qrData?.vehicleName || ''}`
+                    : (verifiedVehicleData?.itemType || qrData?.itemType || qrForLabel)}
                 </span>
               )}
             </div>
@@ -929,7 +1066,7 @@ export default function PublicQRScan() {
                     : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
                 }`}
               >
-                <span>{r.icon || '📌'}</span>
+                <span className="text-base">{getReasonEmoji(r)}</span>
                 <span className="truncate">{r.title}</span>
               </button>
             ))}
@@ -996,8 +1133,23 @@ export default function PublicQRScan() {
           </button>
         </div>
 
-        {/* Call Initiated Direct Line Prompt */}
-        {callInitiated && phoneToCall && (
+        {/* Call Initiated / Masked Bridge Prompt */}
+        {callInitiated && callResponse?.masked && (
+          <div className="p-4 bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50 border-2 border-emerald-300 rounded-2xl text-center space-y-2.5 animate-fadeIn shadow-md">
+            <div className="flex items-center justify-center space-x-2 text-emerald-800 font-black text-xs">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
+              <span>📞 Masked Call Bridge Connected</span>
+            </div>
+            <p className="text-xs text-slate-700 font-medium leading-relaxed">
+              Exotel is calling your number <strong className="font-mono text-slate-900">+91 {scannerPhone}</strong>. Please answer the incoming call on your phone to speak directly with the owner!
+            </p>
+            <div className="text-[10px] text-emerald-700 font-bold bg-emerald-100/70 py-1 px-3 rounded-lg inline-block">
+              🔒 SafeDrive Privacy Shield Active • Virtual Number Masking
+            </div>
+          </div>
+        )}
+
+        {callInitiated && !callResponse?.masked && phoneToCall && (
           <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl text-center space-y-2 animate-fadeIn">
             <span className="text-xs font-bold text-[#1E8A38]">Masked Call Connection Ready</span>
             <a

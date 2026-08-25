@@ -275,6 +275,11 @@ export default function Orders() {
                                     ? `Tag ID: ${displayTagId} (Allotted)`
                                     : 'Scan package QR to activate'}
                                 </div>
+                                {linkedQR?.securityCode && (
+                                  <div className="inline-block mt-0.5 font-mono text-[9px] bg-amber-100 text-amber-900 font-black px-1.5 py-0.2 rounded border border-amber-300">
+                                    PIN: {linkedQR.securityCode}
+                                  </div>
+                                )}
                               </div>
                             </div>
 
@@ -294,7 +299,8 @@ export default function Orders() {
                                         tagId: displayTagId,
                                         publicToken,
                                         qrFor: order.qrFor,
-                                        isClaimed: true
+                                        isClaimed: true,
+                                        securityCode: linkedQR?.securityCode
                                       })}
                                       className="text-[10px] font-bold bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 px-2.5 py-1.5 rounded-lg transition flex items-center space-x-1"
                                     >
@@ -318,7 +324,8 @@ export default function Orders() {
                                       tagId: displayTagId || `Kit #${idx + 1}`,
                                       publicToken,
                                       qrFor: order.qrFor,
-                                      isClaimed: false
+                                      isClaimed: false,
+                                      securityCode: linkedQR?.securityCode
                                     })}
                                     className="text-[10px] font-bold bg-white hover:bg-indigo-50 text-indigo-700 border border-indigo-200 px-2.5 py-1.5 rounded-lg transition flex items-center space-x-1"
                                   >
@@ -526,6 +533,11 @@ export default function Orders() {
               <h3 className="text-lg font-black text-slate-900 font-mono">
                 {selectedDigitalQR.tagId}
               </h3>
+              {selectedDigitalQR.securityCode && (
+                <div className="inline-block bg-amber-100 text-amber-950 border border-amber-300 font-mono font-black text-xs px-3 py-1 rounded-lg">
+                  🔑 TAG PIN: <span className="tracking-widest">{selectedDigitalQR.securityCode}</span>
+                </div>
+              )}
               <p className="text-xs text-slate-500">
                 {selectedDigitalQR.isClaimed
                   ? 'Active digital QR sticker linked to your safety profile.'

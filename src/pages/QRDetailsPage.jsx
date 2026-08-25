@@ -449,7 +449,9 @@ export default function QRDetailsPage() {
               <div>
                 <div className="flex items-center space-x-2.5">
                   <h1 className="text-xl sm:text-2xl font-black text-slate-900 font-mono tracking-tight">
-                    {vehicle?.vehicleNumber || qr.productId}
+                    {qr.isVehicle === false
+                      ? (vehicle?.itemName || vehicle?.vehicleName || qr.productId)
+                      : (vehicle?.vehicleNumber || qr.productId)}
                   </h1>
                   <span className={`text-[11px] font-black uppercase px-3 py-1 rounded-full border ${
                     isActive ? 'bg-emerald-50 text-[#1E8A38] border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'
@@ -457,9 +459,18 @@ export default function QRDetailsPage() {
                     {isActive ? `● Active (${remainingDays}d left)` : '⏸️ Paused'}
                   </span>
                 </div>
+
+                {qr.securityCode && (
+                  <div className="inline-block mt-1 bg-amber-100 text-amber-950 border border-amber-300 font-mono font-black text-xs px-2.5 py-0.5 rounded-lg">
+                    🔑 TAG PIN: <span className="tracking-widest">{qr.securityCode}</span>
+                  </div>
+                )}
+
                 <div className="flex flex-wrap items-center gap-2 mt-1.5 text-xs text-slate-500 font-medium">
                   <span className="font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded">
-                    {vehicle?.vehicleBrand || category} {vehicle?.vehicleName || ''}
+                    {qr.isVehicle === false
+                      ? (vehicle?.itemType || category || 'Item')
+                      : `${vehicle?.vehicleBrand || category} ${vehicle?.vehicleName || ''}`}
                   </span>
                   <span>•</span>
                   <span className={`font-bold px-2 py-0.5 rounded text-[10px] ${
