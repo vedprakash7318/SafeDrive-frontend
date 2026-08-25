@@ -130,6 +130,9 @@ export default function PublicQRScan() {
 
       if (qrRes.data.success) {
         setQrData(qrRes.data);
+        if (qrRes.data.securityCode) {
+          setRegForm(prev => ({ ...prev, securityCode: String(qrRes.data.securityCode) }));
+        }
       } else {
         setQrData(qrRes.data);
       }
@@ -668,12 +671,19 @@ export default function PublicQRScan() {
                 ) : (
                   <>
                     {/* Non-Vehicle: 4-Digit Security Tag PIN */}
-                    <div className="bg-amber-50/80 border border-amber-200 rounded-2xl p-3.5 space-y-1.5">
-                      <label className="block text-xs font-black text-amber-950 uppercase tracking-wider">
-                        🔑 4-Digit Security Tag PIN *
-                      </label>
+                    <div className="bg-amber-50/90 border border-amber-200 rounded-2xl p-4 space-y-2">
+                      <div className="flex justify-between items-center">
+                        <label className="block text-xs font-black text-amber-950 uppercase tracking-wider">
+                          🔑 4-Digit Security Tag PIN *
+                        </label>
+                        {qrData?.securityCode && (
+                          <span className="text-[11px] bg-amber-200 text-amber-950 font-black px-2 py-0.5 rounded-md font-mono border border-amber-300">
+                            PIN: {qrData.securityCode}
+                          </span>
+                        )}
+                      </div>
                       <p className="text-[11px] text-amber-800">
-                        Enter the 4-digit security code printed directly on your physical tag / kit sticker.
+                        Enter the 4-digit security PIN printed directly on your physical tag sticker or assigned to your digital pass.
                       </p>
                       <input
                         type="text"
@@ -682,9 +692,18 @@ export default function PublicQRScan() {
                         required
                         value={regForm.securityCode}
                         onChange={(e) => setRegForm({ ...regForm, securityCode: e.target.value.replace(/\D/g, '') })}
-                        placeholder="e.g. 5831"
+                        placeholder={qrData?.securityCode || "e.g. 5831"}
                         className="w-full bg-white border-2 border-amber-300 rounded-xl text-center text-xl font-mono font-black tracking-widest text-slate-900 py-2 focus:outline-none focus:border-amber-600 shadow-inner"
                       />
+                      {qrData?.securityCode && regForm.securityCode !== qrData.securityCode && (
+                        <button
+                          type="button"
+                          onClick={() => setRegForm({ ...regForm, securityCode: qrData.securityCode })}
+                          className="text-[11px] font-bold text-amber-900 underline hover:text-amber-700 block text-center w-full mt-1"
+                        >
+                          Auto-fill PIN ({qrData.securityCode})
+                        </button>
+                      )}
                     </div>
 
                     {/* Non-Vehicle: Item Name & Category */}
