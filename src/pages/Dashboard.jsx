@@ -357,27 +357,40 @@ export default function Dashboard() {
               </button>
             </div>
 
-            <div className="space-y-3">
-              {(packages.length > 0 ? packages : [
-                { _id: '1', name: 'Starter Call Pack', price: 99, callQuota: 50, messageQuota: 50 },
-                { _id: '2', name: 'Pro Protection Booster', price: 199, callQuota: 150, messageQuota: 150 },
-                { _id: '3', name: 'Annual Unlimited Shield', price: 399, callQuota: 500, messageQuota: 500 }
-              ]).map((pkg) => (
+            <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
+              {packages.map((pkg) => (
                 <div
                   key={pkg._id}
-                  className="bg-slate-50 hover:bg-white border border-slate-200 hover:border-[#1E8A38] p-4 rounded-2xl transition flex justify-between items-center"
+                  className="bg-slate-50 hover:bg-white border border-slate-200 hover:border-[#1E8A38] p-4 rounded-2xl transition flex justify-between items-center shadow-xs"
                 >
-                  <div>
-                    <h4 className="font-black text-sm text-slate-900">{pkg.name}</h4>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      📞 {pkg.callQuota} Calls • 💬 {pkg.messageQuota} WhatsApp Alerts
+                  <div className="space-y-1">
+                    <div className="flex items-center space-x-2">
+                      <h4 className="font-black text-sm text-slate-900">{pkg.name}</h4>
+                      <span className="text-[9px] uppercase font-black px-2 py-0.5 rounded-md bg-emerald-50 text-[#1E8A38] border border-emerald-200">
+                        {pkg.category === 'CALL' ? 'Voice Booster' : 'Message Booster'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-600 font-medium flex flex-wrap items-center gap-1.5">
+                      {pkg.category === 'CALL' ? (
+                        <span>📞 {pkg.quantity} Calls</span>
+                      ) : (
+                        <span>💬 {pkg.quantity} WhatsApp Messages</span>
+                      )}
+                      {(pkg.bonusCalls > 0 || pkg.bonusMessages > 0) && (
+                        <span>
+                          + {pkg.bonusCalls ? `📞 ${pkg.bonusCalls} Calls ` : ''}
+                          {pkg.bonusMessages ? `💬 ${pkg.bonusMessages} Alerts` : ''}
+                        </span>
+                      )}
+                      <span className="text-slate-400">•</span>
+                      <span className="text-slate-500">📅 {pkg.durationDays || 365} Days Validity</span>
                     </p>
                   </div>
 
                   <button
                     onClick={() => handleBuyBooster(pkg)}
                     disabled={buyLoading}
-                    className="bg-[#1E8A38] hover:bg-[#16702c] text-white font-black px-4 py-2 rounded-xl text-xs shadow-sm transition active:scale-95"
+                    className="bg-[#1E8A38] hover:bg-[#16702c] text-white font-black px-4 py-2.5 rounded-xl text-xs shadow-sm transition active:scale-95 cursor-pointer disabled:opacity-50 shrink-0 ml-3"
                   >
                     Buy ₹{pkg.price}
                   </button>
