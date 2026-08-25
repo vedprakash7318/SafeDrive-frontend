@@ -27,6 +27,7 @@ export default function CheckoutModal({ product, onClose, onPurchaseSuccess }) {
   // Form State
   const [form, setForm] = useState({
     name: '',
+    gender: 'Male',
     email: '',
     phone: '',
     address: '',
@@ -58,10 +59,12 @@ export default function CheckoutModal({ product, onClose, onPurchaseSuccess }) {
       const storedUser = JSON.parse(localStorage.getItem('safe_drive_user_data') || 'null');
       if (storedToken && storedUser) {
         setIsLoggedIn(true);
+        const defaultPhone = storedUser.phone || '';
         setForm({
           name: storedUser.name || '',
+          gender: storedUser.gender || 'Male',
           email: storedUser.email || '',
-          phone: storedUser.phone || '',
+          phone: defaultPhone,
           address: storedUser.address || '',
           city: storedUser.city || '',
           state: storedUser.state || '',
@@ -73,6 +76,11 @@ export default function CheckoutModal({ product, onClose, onPurchaseSuccess }) {
       console.error('Error reading logged in user data:', err);
     }
   }, []);
+
+  const handleQuantityChange = (newQty) => {
+    const qty = Math.max(1, Math.min(20, newQty));
+    setQuantity(qty);
+  };
 
   // Handle Step 1 Submit -> Send OTP to Mobile Number
   const handleProceedToOTP = async (e) => {
@@ -244,8 +252,11 @@ export default function CheckoutModal({ product, onClose, onPurchaseSuccess }) {
         productId: product._id,
         quantity,
         name: form.name,
+        gender: form.gender || 'Male',
         email: form.email,
         phone: form.phone,
+        activationPhone: form.phone,
+        activationPhones: [form.phone],
         address: form.address,
         city: form.city,
         state: form.state,
@@ -286,11 +297,16 @@ export default function CheckoutModal({ product, onClose, onPurchaseSuccess }) {
               <ShieldCheck className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-black text-lg text-slate-900 leading-tight">
-                {step === 4 ? 'Purchase Complete!' : 'Secure Checkout'}
-              </h3>
+              <div className="flex items-center space-x-2">
+                <h3 className="font-black text-lg text-slate-900 leading-tight">
+                  {step === 4 ? 'Purchase Complete!' : 'Secure Checkout'}
+                </h3>
+                <span className="text-[10px] font-bold px-2 py-0.5 bg-blue-50 text-[#1D56A5] border border-blue-200 rounded-md font-mono">
+                  🏷️ For {product.qrFor || product.qrTypeName || 'Car'}
+                </span>
+              </div>
               <p className="text-xs text-slate-500 font-medium">
-                {product.name} • <strong className="text-[#1D56A5]">₹{product.price}</strong> ({product.copiesPerSet} Stickers)
+                {product.name} • <strong className="text-[#1D56A5]">₹{product.price}</strong> ({product.copiesPerSet || 2} Stickers)
               </p>
             </div>
           </div>
@@ -363,7 +379,7 @@ export default function CheckoutModal({ product, onClose, onPurchaseSuccess }) {
                   <div className="flex items-center space-x-2 bg-white border border-slate-300 rounded-xl p-1 shadow-sm">
                     <button
                       type="button"
-                      onClick={() => setQuantity((prev) => Math.max(1, prev - 1))}
+                      onClick={() => handleQuantityChange(quantity - 1)}
                       className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold flex items-center justify-center text-sm transition disabled:opacity-40"
                       disabled={quantity <= 1}
                     >
@@ -372,7 +388,7 @@ export default function CheckoutModal({ product, onClose, onPurchaseSuccess }) {
                     <span className="w-8 text-center font-mono font-black text-slate-900 text-sm">{quantity}</span>
                     <button
                       type="button"
-                      onClick={() => setQuantity((prev) => Math.min(20, prev + 1))}
+                      onClick={() => handleQuantityChange(quantity + 1)}
                       className="w-7 h-7 rounded-lg bg-[#1D56A5] hover:bg-[#164382] text-white font-bold flex items-center justify-center text-sm transition"
                     >
                       +
@@ -429,20 +445,38 @@ export default function CheckoutModal({ product, onClose, onPurchaseSuccess }) {
                   </div>
                 )}
 
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    Full Name *
-                  </label>
-                  <div className="relative">
-                    <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                    <input
-                      type="text"
-                      required
-                      placeholder="e.g. Rahul Sharma"
-                      value={form.name}
-                      onChange={(e) => setForm({ ...form, name: e.target.value })}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-slate-900 text-sm focus:bg-white focus:outline-none focus:border-[#1D56A5] transition"
-                    />
+                {/* Full Name & Gender */}
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                  <div className="sm:col-span-7">
+                    <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                      Full Name *
+                    </label>
+                    <div className="relative">
+                      <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. Rahul Sharma"
+                        value={form.name}
+                        onChange={(e) => setForm({ ...form, name: e.target.value })}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-slate-900 text-sm focus:bg-white focus:outline-none focus:border-[#F36F21] transition"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="sm:col-span-5">
+                    <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                      Gender *
+                    </label>
+                    <select
+                      value={form.gender || 'Male'}
+                      onChange={(e) => setForm({ ...form, gender: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-900 text-sm font-medium focus:bg-white focus:outline-none focus:border-[#F36F21] transition"
+                    >
+                      <option value="Male">👨 Male</option>
+                      <option value="Female">👩 Female</option>
+                      <option value="Other">⚧ Other</option>
+                    </select>
                   </div>
                 </div>
 
@@ -471,11 +505,12 @@ export default function CheckoutModal({ product, onClose, onPurchaseSuccess }) {
                       <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                       <input
                         type="tel"
+                        maxLength={10}
                         required
                         placeholder="10-digit Mobile"
                         value={form.phone}
-                        onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-slate-900 text-sm font-mono focus:bg-white focus:outline-none focus:border-[#1D56A5] transition"
+                        onChange={(e) => setForm({ ...form, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-slate-900 text-sm font-mono focus:bg-white focus:outline-none focus:border-[#F36F21] transition"
                       />
                     </div>
                   </div>
@@ -521,7 +556,7 @@ export default function CheckoutModal({ product, onClose, onPurchaseSuccess }) {
                       type="text"
                       required
                       maxLength="6"
-                      placeholder="6-digit Pincode (e.g. 226001)"
+                      placeholder="6-digit Pincode"
                       value={form.pincode}
                       onChange={(e) => setForm({ ...form, pincode: e.target.value.replace(/\D/g, '') })}
                       className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 text-sm font-mono focus:bg-white focus:outline-none focus:border-[#1D56A5] transition"
@@ -566,7 +601,7 @@ export default function CheckoutModal({ product, onClose, onPurchaseSuccess }) {
                   <div className="flex items-center space-x-2 bg-white border border-slate-300 rounded-xl p-1 shadow-sm">
                     <button
                       type="button"
-                      onClick={() => setQuantity((prev) => Math.max(1, prev - 1))}
+                      onClick={() => handleQuantityChange(quantity - 1)}
                       className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold flex items-center justify-center text-sm transition disabled:opacity-40"
                       disabled={quantity <= 1}
                     >
@@ -575,7 +610,7 @@ export default function CheckoutModal({ product, onClose, onPurchaseSuccess }) {
                     <span className="w-8 text-center font-mono font-black text-slate-900 text-sm">{quantity}</span>
                     <button
                       type="button"
-                      onClick={() => setQuantity((prev) => Math.min(20, prev + 1))}
+                      onClick={() => handleQuantityChange(quantity + 1)}
                       className="w-7 h-7 rounded-lg bg-[#1D56A5] hover:bg-[#164382] text-white font-bold flex items-center justify-center text-sm transition"
                     >
                       +
