@@ -530,12 +530,17 @@ export default function Orders() {
               <span className="text-[10px] font-black uppercase px-2.5 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-full inline-block">
                 💻 Digital Safety Tag • {selectedDigitalQR.qrFor || 'Vehicle / Luggage'}
               </span>
-              <h3 className="text-lg font-black text-slate-900 font-mono">
+              <h3 className="text-xl font-black text-slate-900 font-mono">
                 {selectedDigitalQR.tagId}
               </h3>
               {selectedDigitalQR.securityCode && (
-                <div className="inline-block bg-amber-100 text-amber-950 border border-amber-300 font-mono font-black text-xs px-3 py-1 rounded-lg">
-                  🔑 TAG PIN: <span className="tracking-widest">{selectedDigitalQR.securityCode}</span>
+                <div className="p-2.5 bg-amber-50 border-2 border-amber-300 rounded-xl flex items-center justify-between text-xs shadow-2xs">
+                  <span className="font-black text-amber-950 flex items-center space-x-1">
+                    <span>🔑 4-Digit Security PIN:</span>
+                  </span>
+                  <span className="font-mono font-black text-amber-950 text-base tracking-widest bg-white px-3 py-1 rounded-lg border border-amber-400 shadow-inner">
+                    {selectedDigitalQR.securityCode}
+                  </span>
                 </div>
               )}
               <p className="text-xs text-slate-500">
