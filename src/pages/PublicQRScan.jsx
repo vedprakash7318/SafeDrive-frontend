@@ -117,9 +117,22 @@ export default function PublicQRScan() {
   // Action status
   const [actionLoading, setActionLoading] = useState(false);
   const [publicAlertSuccessMsg, setPublicAlertSuccessMsg] = useState('');
+  const [pushCooldown, setPushCooldown] = useState(0);
   const [callInitiated, setCallInitiated] = useState(false);
   const [callResponse, setCallResponse] = useState(null);
   const [phoneToCall, setPhoneToCall] = useState('');
+
+  useEffect(() => {
+    let timer;
+    if (pushCooldown > 0) {
+      timer = setInterval(() => {
+        setPushCooldown((prev) => prev - 1);
+      }, 1000);
+    }
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [pushCooldown]);
 
   const fetchQRInfo = async () => {
     try {
@@ -357,9 +370,19 @@ export default function PublicQRScan() {
       });
       if (res.data.success) {
         setPublicAlertSuccessMsg('✓ Push Notification & Instant Ringtone Alert sent to vehicle owner!');
+        setPushCooldown(30); // Start default 30s countdown on success
       }
     } catch (err) {
-      alert(err.response?.data?.message || 'Failed to send push notification.');
+      const errMsg = err.response?.data?.message || 'Failed to send push notification.';
+      alert(errMsg);
+      
+      // Parse wait time if 429 rate limit hit
+      if (err.response?.status === 429) {
+        const match = errMsg.match(/wait (\d+) seconds/);
+        if (match && match[1]) {
+          setPushCooldown(parseInt(match[1], 10));
+        }
+      }
     } finally {
       setActionLoading(false);
     }
@@ -1109,11 +1132,17 @@ export default function PublicQRScan() {
           <button
             type="button"
             onClick={handleSendPushNotification}
-            disabled={actionLoading}
-            className="w-full bg-[#F36F21] hover:bg-[#d85810] text-white font-bold py-3.5 rounded-2xl shadow-md transition flex items-center justify-center space-x-2 text-xs cursor-pointer active:scale-95 disabled:opacity-50"
+            disabled={actionLoading || pushCooldown > 0}
+            className={`w-full font-bold py-3.5 rounded-2xl shadow-md transition flex items-center justify-center space-x-2 text-xs cursor-pointer active:scale-95 disabled:opacity-50 ${
+              pushCooldown > 0 ? 'bg-slate-400 text-white' : 'bg-[#F36F21] hover:bg-[#d85810] text-white'
+            }`}
           >
             <Bell className="w-4 h-4" />
-            <span>🔔 Send Instant Push Alert</span>
+            <span>
+              {pushCooldown > 0 
+                ? `Wait ${pushCooldown}s to Send Again` 
+                : '🔔 Send Instant Push Alert'}
+            </span>
           </button>
 
           <div className="grid grid-cols-2 gap-2">
