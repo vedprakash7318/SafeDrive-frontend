@@ -370,7 +370,7 @@ export default function PublicQRScan() {
       });
       if (res.data.success) {
         setPublicAlertSuccessMsg('✓ Push Notification & Instant Ringtone Alert sent to vehicle owner!');
-        setPushCooldown(30); // Start default 30s countdown on success
+        setPushCooldown(res.data.cooldownSeconds || 30); // Start dynamic countdown on success
       }
     } catch (err) {
       const errMsg = err.response?.data?.message || 'Failed to send push notification.';
