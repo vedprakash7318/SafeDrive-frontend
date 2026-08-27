@@ -35,7 +35,7 @@ export default function SafeDriveQRCode({
   includeMargin = true,
   id
 }) {
-  const logoSize = Math.round(size * 0.28);
+  const logoSize = Math.round(size * 0.20);
 
   return (
     <div className={`relative inline-flex items-center justify-center ${className}`}>
